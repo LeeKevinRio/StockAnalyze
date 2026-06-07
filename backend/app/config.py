@@ -32,6 +32,20 @@ class Settings(BaseSettings):
     SCHEDULER_ENABLED: bool = True
 
     @property
+    def async_database_url(self) -> str:
+        """Normalise the DB URL to the asyncpg driver.
+
+        Hosts like Railway/Heroku provide ``postgres://`` or ``postgresql://``;
+        SQLAlchemy's async engine needs the ``postgresql+asyncpg://`` form.
+        """
+        url = self.DATABASE_URL
+        if url.startswith("postgres://"):
+            url = "postgresql://" + url[len("postgres://"):]
+        if url.startswith("postgresql://"):
+            url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+        return url
+
+    @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
 

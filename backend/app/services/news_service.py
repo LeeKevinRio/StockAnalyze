@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data_fetchers.news_fetcher import NewsFetcher
 from app.models.news import StockNews
+from app.services.sentiment_analyzer import ChineseSentimentAnalyzer
 from app.utils.text_utils import title_similarity
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,19 @@ _DEDUP_THRESHOLD = 0.7
 
 # Shared fetcher instance (stateless aside from rate-limit bookkeeping)
 _news_fetcher = NewsFetcher()
+
+# Lexicon-based sentiment analyzer (synchronous, no API key required)
+_sentiment_analyzer = ChineseSentimentAnalyzer()
+
+
+def _impact_from_score(score: float) -> str:
+    """Derive a coarse impact level from the absolute sentiment magnitude."""
+    a = abs(score)
+    if a >= 0.6:
+        return "high"
+    if a >= 0.3:
+        return "medium"
+    return "low"
 
 
 async def fetch_and_store_news(
@@ -65,6 +79,10 @@ async def fetch_and_store_news(
         if is_dup:
             continue
 
+        # Sentiment analysis on title + content (lexicon-based, no API key).
+        analysis_text = f"{title}。{article.get('content') or ''}"
+        sent = _sentiment_analyzer.analyze(analysis_text)
+
         news_record = StockNews(
             stock_id=stock_id,
             title=title,
@@ -72,6 +90,10 @@ async def fetch_and_store_news(
             source=article.get("source"),
             source_url=article.get("source_url"),
             published_at=article.get("published_at"),
+            sentiment=sent.label,
+            sentiment_score=round(sent.score, 3),
+            sentiment_method="keyword",
+            impact_level=_impact_from_score(sent.score),
         )
         db.add(news_record)
         existing_titles.append(title)

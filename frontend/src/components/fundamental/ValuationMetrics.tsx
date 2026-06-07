@@ -55,10 +55,10 @@ function MetricCard({
         <div className="mt-1 flex items-end justify-between">
           <div>
             <div className="text-xl font-bold text-white">
-              {stockValue != null ? `${stockValue.toFixed(2)}${suffix}` : '—'}
+              {stockValue != null ? `${Number(stockValue).toFixed(2)}${suffix}` : '—'}
             </div>
             <div className="mt-0.5 text-xs text-slate-500">
-              產業平均: {industryValue != null ? `${industryValue.toFixed(2)}${suffix}` : '—'}
+              產業平均: {industryValue != null ? `${Number(industryValue).toFixed(2)}${suffix}` : '—'}
             </div>
           </div>
           {hasComparison && (

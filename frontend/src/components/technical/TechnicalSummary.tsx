@@ -16,16 +16,17 @@ interface TechnicalSummaryProps {
   summary: string;
 }
 
+// Taiwan convention (紅漲綠跌): bullish/high = red, bearish/low = green.
 function getScoreColor(score: number) {
-  if (score >= 70) return 'text-emerald-400';
+  if (score >= 70) return 'text-red-400';
   if (score >= 40) return 'text-yellow-400';
-  return 'text-red-400';
+  return 'text-emerald-400';
 }
 
 function getScoreBg(score: number) {
-  if (score >= 70) return 'bg-emerald-500/20 text-emerald-400';
+  if (score >= 70) return 'bg-red-500/20 text-red-400';
   if (score >= 40) return 'bg-yellow-500/20 text-yellow-400';
-  return 'bg-red-500/20 text-red-400';
+  return 'bg-emerald-500/20 text-emerald-400';
 }
 
 function getStrengthBadgeClass(strength: string) {
@@ -90,9 +91,9 @@ export function TechnicalSummary({ signals, score, summary }: TechnicalSummaryPr
                   <span
                     className={`text-lg font-bold ${
                       signal.direction === 'bullish'
-                        ? 'text-emerald-400'
+                        ? 'text-red-400'
                         : signal.direction === 'bearish'
-                          ? 'text-red-400'
+                          ? 'text-emerald-400'
                           : 'text-slate-400'
                     }`}
                   >

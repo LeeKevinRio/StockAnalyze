@@ -15,12 +15,20 @@ import {
   ComposedChart,
 } from 'recharts';
 
+/**
+ * The backend returns each indicator as parallel numeric arrays (no dates),
+ * and the arrays have different lengths (e.g. MACD signal is shorter than the
+ * MACD line). We align every series to the most recent `dates` by taking the
+ * trailing slice, which keeps the right edge (latest values) correct.
+ */
 interface IndicatorPanelProps {
   indicators: {
-    macd?: { date: string; macd: number; signal: number; histogram: number }[];
-    rsi?: { date: string; rsi: number }[];
-    kd?: { date: string; k: number; d: number }[];
+    macd?: { macd: number[]; signal: number[]; histogram: number[] };
+    rsi?: number[];
+    kd?: { k: number[]; d: number[] };
   };
+  /** Ascending price dates used to label the indicator x-axis. */
+  dates?: string[];
 }
 
 function formatDateShort(dateStr: string) {
@@ -28,6 +36,16 @@ function formatDateShort(dateStr: string) {
   const parts = dateStr.split('-');
   if (parts.length >= 3) return `${parts[1]}/${parts[2]}`;
   return dateStr;
+}
+
+function tail<T>(arr: T[] | undefined, n: number): T[] {
+  if (!arr || arr.length === 0) return [];
+  return arr.slice(arr.length - n);
+}
+
+function labelsFor(len: number, dates?: string[]): string[] {
+  if (dates && dates.length >= len) return dates.slice(dates.length - len);
+  return Array.from({ length: len }, (_, i) => String(i + 1));
 }
 
 const tooltipStyle = {
@@ -41,10 +59,35 @@ const tooltipStyle = {
   labelStyle: { color: '#94a3b8' },
 };
 
-export function IndicatorPanel({ indicators }: IndicatorPanelProps) {
-  const macdData = indicators?.macd ?? [];
-  const rsiData = indicators?.rsi ?? [];
-  const kdData = indicators?.kd ?? [];
+export function IndicatorPanel({ indicators, dates }: IndicatorPanelProps) {
+  // MACD — align macd/signal/histogram to their common (shortest) length.
+  const macdRaw = indicators?.macd;
+  let macdData: { date: string; macd: number; signal: number; histogram: number }[] = [];
+  if (macdRaw?.signal?.length && macdRaw?.macd?.length) {
+    const L = Math.min(macdRaw.macd.length, macdRaw.signal.length, macdRaw.histogram.length);
+    const macdT = tail(macdRaw.macd, L);
+    const sigT = tail(macdRaw.signal, L);
+    const histT = tail(macdRaw.histogram, L);
+    const lbls = labelsFor(L, dates);
+    macdData = macdT.map((v, i) => ({ date: lbls[i], macd: v, signal: sigT[i], histogram: histT[i] }));
+  }
+
+  // RSI — flat array.
+  const rsiRaw = indicators?.rsi ?? [];
+  const rsiData = rsiRaw.length
+    ? labelsFor(rsiRaw.length, dates).map((d, i) => ({ date: d, rsi: rsiRaw[i] }))
+    : [];
+
+  // KD — k/d parallel arrays.
+  const kdRaw = indicators?.kd;
+  let kdData: { date: string; k: number; d: number }[] = [];
+  if (kdRaw?.k?.length && kdRaw?.d?.length) {
+    const L = Math.min(kdRaw.k.length, kdRaw.d.length);
+    const kT = tail(kdRaw.k, L);
+    const dT = tail(kdRaw.d, L);
+    const lbls = labelsFor(L, dates);
+    kdData = kT.map((v, i) => ({ date: lbls[i], k: v, d: dT[i] }));
+  }
 
   if (macdData.length === 0 && rsiData.length === 0 && kdData.length === 0) {
     return (
@@ -92,7 +135,7 @@ export function IndicatorPanel({ indicators }: IndicatorPanelProps) {
                 {macdData.map((entry, index) => (
                   <Cell
                     key={index}
-                    fill={entry.histogram >= 0 ? '#22c55e' : '#ef4444'}
+                    fill={entry.histogram >= 0 ? '#ef4444' : '#22c55e'}
                   />
                 ))}
               </Bar>

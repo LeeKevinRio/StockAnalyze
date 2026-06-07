@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { scoreHex } from '@/lib/marketColors';
 
 interface ScoreGaugeProps {
   score: number; // -100 to 100
@@ -8,13 +9,8 @@ interface ScoreGaugeProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
-function getScoreColor(score: number): string {
-  if (score >= 60) return '#22c55e';   // green - strong buy
-  if (score >= 20) return '#86efac';   // light green - buy
-  if (score >= -20) return '#94a3b8';  // gray - neutral
-  if (score >= -60) return '#f97316';  // orange - sell
-  return '#ef4444';                     // red - strong sell
-}
+// Taiwan convention (紅漲綠跌): high score = red, low score = green.
+const getScoreColor = scoreHex;
 
 const SIZES = {
   sm: { outer: 80, stroke: 6, fontSize: 'text-lg', labelSize: 'text-[10px]' },
@@ -43,40 +39,39 @@ export function ScoreGauge({ score, label, size = 'md' }: ScoreGaugeProps) {
   const color = getScoreColor(score);
 
   return (
-    <div className="flex flex-col items-center gap-1">
-      <svg width={outer} height={outer} className="-rotate-90">
-        {/* Background track */}
-        <circle
-          cx={outer / 2}
-          cy={outer / 2}
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={stroke}
-          className="text-slate-700"
-        />
-        {/* Colored arc */}
-        <circle
-          cx={outer / 2}
-          cy={outer / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={dashOffset}
-          style={{ transition: 'stroke-dashoffset 0.8s ease-out' }}
-        />
-      </svg>
-      {/* Score number in center - overlay on top of SVG */}
-      <div
-        className="flex items-center justify-center"
-        style={{ marginTop: -outer + (outer - stroke) / 2, height: outer }}
-      >
-        <span className={`${fontSize} font-bold`} style={{ color }}>
-          {score > 0 ? '+' : ''}{score}
-        </span>
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative" style={{ width: outer, height: outer }}>
+        <svg width={outer} height={outer} className="-rotate-90">
+          {/* Background track */}
+          <circle
+            cx={outer / 2}
+            cy={outer / 2}
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={stroke}
+            className="text-slate-700"
+          />
+          {/* Colored arc */}
+          <circle
+            cx={outer / 2}
+            cy={outer / 2}
+            r={radius}
+            fill="none"
+            stroke={color}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={dashOffset}
+            style={{ transition: 'stroke-dashoffset 0.8s ease-out' }}
+          />
+        </svg>
+        {/* Score number centered over the ring */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className={`${fontSize} font-bold`} style={{ color }}>
+            {score > 0 ? '+' : ''}{score}
+          </span>
+        </div>
       </div>
       {/* Label below */}
       <span className={`${labelSize} text-muted-foreground`}>{label}</span>

@@ -13,9 +13,13 @@ from app.routers import stocks, news, sentiment, analysis, health, technical, in
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
-    # Startup
-    if settings.is_development:
+    # Startup — create tables if missing (idempotent; safe in prod & dev).
+    try:
         await init_db()
+    except Exception:
+        # Don't crash the app if the DB is briefly unavailable at boot.
+        import logging
+        logging.getLogger(__name__).exception("init_db failed at startup")
     yield
     # Shutdown
 

@@ -54,7 +54,14 @@ export function PriceChart({ prices, height = 400 }: PriceChartProps) {
         timeScale: {
           borderColor: '#1e293b',
           timeVisible: false,
+          fixLeftEdge: true,
+          fixRightEdge: true,
+          lockVisibleTimeRangeOnResize: true,
         },
+        // Only ~6 months of data — lock the view so it can't be zoomed/panned
+        // away into empty space.
+        handleScroll: false,
+        handleScale: false,
       });
 
       chartRef.current = chart;
@@ -65,21 +72,22 @@ export function PriceChart({ prices, height = 400 }: PriceChartProps) {
         .sort((a, b) => a.date.localeCompare(b.date));
 
       // Candlestick series
+      // Taiwan convention (紅漲綠跌): up candles red, down candles green.
       const candleSeries = chart.addSeries(CandlestickSeries, {
-        upColor: '#22c55e',
-        downColor: '#ef4444',
-        borderUpColor: '#22c55e',
-        borderDownColor: '#ef4444',
-        wickUpColor: '#22c55e',
-        wickDownColor: '#ef4444',
+        upColor: '#ef4444',
+        downColor: '#22c55e',
+        borderUpColor: '#ef4444',
+        borderDownColor: '#22c55e',
+        wickUpColor: '#ef4444',
+        wickDownColor: '#22c55e',
       });
 
       const candleData = sorted.map((p) => ({
         time: p.date as string,
-        open: p.open!,
-        high: p.high!,
-        low: p.low!,
-        close: p.close!,
+        open: Number(p.open),
+        high: Number(p.high),
+        low: Number(p.low),
+        close: Number(p.close),
       }));
 
       candleSeries.setData(candleData);
@@ -101,9 +109,9 @@ export function PriceChart({ prices, height = 400 }: PriceChartProps) {
           value: p.volume!,
           color:
             p.close != null && p.open != null
-              ? p.close >= p.open
-                ? 'rgba(34,197,94,0.4)'
-                : 'rgba(239,68,68,0.4)'
+              ? Number(p.close) >= Number(p.open)
+                ? 'rgba(239,68,68,0.4)'
+                : 'rgba(34,197,94,0.4)'
               : 'rgba(148,163,184,0.3)',
         }));
 

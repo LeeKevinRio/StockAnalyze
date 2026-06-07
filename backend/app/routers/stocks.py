@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.analysis import AnalysisReport
 from app.models.stock import Stock, StockPrice
 from app.schemas.stock import StockResponse, StockPriceResponse, StockDetailResponse, StockSearchResult
 
@@ -40,6 +41,71 @@ async def get_hot_stocks(
     query = select(Stock).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.get("/hot-detailed")
+async def get_hot_detailed(
+    limit: int = Query(12, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    """Hot stocks with latest price, change, sparkline and analysis signal.
+
+    Returns the stocks that actually have price data (excluding the market
+    index), sorted by absolute daily change so the most active appear first.
+    """
+    ids = (
+        await db.execute(
+            select(StockPrice.stock_id).where(StockPrice.stock_id != "TAIEX").distinct()
+        )
+    ).scalars().all()
+
+    out = []
+    for sid in ids:
+        prices = (
+            await db.execute(
+                select(StockPrice)
+                .where(StockPrice.stock_id == sid)
+                .order_by(StockPrice.date.desc())
+                .limit(20)
+            )
+        ).scalars().all()
+        if not prices:
+            continue
+        prices = list(reversed(prices))  # ascending
+        closes = [float(p.close) for p in prices if p.close is not None]
+        if not closes:
+            continue
+        latest = closes[-1]
+        prev = closes[-2] if len(closes) >= 2 else latest
+        change = latest - prev
+        change_pct = (change / prev * 100) if prev else 0.0
+
+        stock = (
+            await db.execute(select(Stock).where(Stock.stock_id == sid))
+        ).scalar_one_or_none()
+        report = (
+            await db.execute(
+                select(AnalysisReport)
+                .where(AnalysisReport.stock_id == sid)
+                .order_by(AnalysisReport.report_date.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+        out.append(
+            {
+                "stock_id": sid,
+                "name": stock.name if stock else sid,
+                "close": round(latest, 2),
+                "change": round(change, 2),
+                "change_percent": round(change_pct, 2),
+                "signal": report.overall_signal if report else None,
+                "sparkline": [round(c, 2) for c in closes],
+            }
+        )
+
+    out.sort(key=lambda x: abs(x["change_percent"]), reverse=True)
+    return out[:limit]
 
 
 @router.get("/{stock_id}", response_model=StockDetailResponse)

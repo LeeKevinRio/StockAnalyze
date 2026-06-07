@@ -10,7 +10,7 @@ export default function NewsPage() {
   const { data: news, isLoading } = useMarketNews(50);
 
   return (
-    <div className="min-h-screen bg-slate-950 pt-14">
+    <div className="min-h-screen bg-slate-950">
       <div className="mx-auto max-w-4xl px-4 py-8">
         {/* Page Header */}
         <div className="mb-6 flex items-center gap-3">

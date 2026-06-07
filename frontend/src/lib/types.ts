@@ -90,6 +90,16 @@ export interface DimensionScore {
   key_factors: string[];
 }
 
+export interface HotStockDetailed {
+  stock_id: string;
+  name: string;
+  close: number;
+  change: number;
+  change_percent: number;
+  signal: string | null;
+  sparkline: number[];
+}
+
 export interface AnalysisScores {
   stock_id: string;
   stock_name: string;

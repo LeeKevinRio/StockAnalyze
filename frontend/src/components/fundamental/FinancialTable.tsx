@@ -29,9 +29,11 @@ interface FinancialTableProps {
   }[];
 }
 
-function formatValue(value: number | null | undefined, suffix = '', decimals = 2) {
+function formatValue(value: number | string | null | undefined, suffix = '', decimals = 2) {
   if (value == null) return '—';
-  return `${value.toFixed(decimals)}${suffix}`;
+  const n = Number(value);
+  if (Number.isNaN(n)) return '—';
+  return `${n.toFixed(decimals)}${suffix}`;
 }
 
 function formatLargeNumber(value: number | null | undefined) {

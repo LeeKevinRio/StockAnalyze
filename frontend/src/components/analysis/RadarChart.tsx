@@ -42,8 +42,8 @@ export function RadarChart({ dimensions }: RadarChartProps) {
         <Radar
           name="分析分數"
           dataKey="score"
-          stroke="#34d399"
-          fill="#34d399"
+          stroke="#38bdf8"
+          fill="#38bdf8"
           fillOpacity={0.25}
         />
       </RechartsRadarChart>

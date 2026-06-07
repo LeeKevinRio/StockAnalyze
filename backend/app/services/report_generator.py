@@ -18,6 +18,21 @@ from app.services.llm_service import llm_service, LLMError
 logger = logging.getLogger(__name__)
 
 
+def _last_valid(seq):
+    """Return the last non-None value of a numeric series, or None.
+
+    The technical service returns each indicator as a full series (a list the
+    same length as the price history, with leading ``None`` values). For the
+    LLM prompt we only want the most recent value.
+    """
+    if isinstance(seq, (list, tuple)):
+        for v in reversed(seq):
+            if v is not None:
+                return v
+        return None
+    return seq
+
+
 # ---------------------------------------------------------------------------
 # Result dataclass
 # ---------------------------------------------------------------------------
@@ -107,9 +122,17 @@ class ReportGenerator:
             output.risk_level = self._extract_risk_level(report_text)
 
             outlooks = self._extract_outlooks(report_text)
-            output.short_term_outlook = outlooks.get("short", "")
-            output.medium_term_outlook = outlooks.get("medium", "")
-            output.long_term_outlook = outlooks.get("long", "")
+            # The LLM is sometimes terse ("上漲"); fall back to a data-derived
+            # sentence so the user never sees a near-empty outlook.
+            output.short_term_outlook = self._ensure_outlook(
+                outlooks.get("short", ""), "short", analysis, output.target_price, output.stop_loss_price
+            )
+            output.medium_term_outlook = self._ensure_outlook(
+                outlooks.get("medium", ""), "medium", analysis, output.target_price, output.stop_loss_price
+            )
+            output.long_term_outlook = self._ensure_outlook(
+                outlooks.get("long", ""), "long", analysis, output.target_price, output.stop_loss_price
+            )
 
             logger.info(
                 "Generated AI report for %s (%s): %d chars, provider=%s",
@@ -124,6 +147,11 @@ class ReportGenerator:
             output.markdown = self._build_fallback_report(stock_id, stock_name, analysis)
             output.provider = "fallback"
             output.risk_level = self._infer_risk_from_score(analysis.overall_score)
+            # Still provide data-derived outlooks so the decision card isn't empty
+            # when the LLM is unavailable (e.g. quota exhausted).
+            output.short_term_outlook = self._ensure_outlook("", "short", analysis, output.target_price, output.stop_loss_price)
+            output.medium_term_outlook = self._ensure_outlook("", "medium", analysis, output.target_price, output.stop_loss_price)
+            output.long_term_outlook = self._ensure_outlook("", "long", analysis, output.target_price, output.stop_loss_price)
 
         return output
 
@@ -247,23 +275,32 @@ class ReportGenerator:
 
             ma = indicators.get("ma", {})
             if ma:
-                for period, val in ma.items():
+                for period, series in ma.items():
+                    val = _last_valid(series)
                     if val is not None:
-                        lines.append(f"- MA{period}: {val:.2f}")
+                        lines.append(f"- {period.upper()}: {val:.2f}")
 
             macd = indicators.get("macd", {})
             if macd:
-                lines.append(f"- MACD: {macd.get('macd', 'N/A')}, Signal: {macd.get('signal', 'N/A')}")
+                macd_val = _last_valid(macd.get("macd"))
+                signal_val = _last_valid(macd.get("signal"))
+                if macd_val is not None or signal_val is not None:
+                    macd_str = f"{macd_val:.2f}" if macd_val is not None else "N/A"
+                    signal_str = f"{signal_val:.2f}" if signal_val is not None else "N/A"
+                    lines.append(f"- MACD: {macd_str}, Signal: {signal_str}")
 
-            rsi = indicators.get("rsi", {})
-            if rsi:
-                for period, val in rsi.items():
-                    if val is not None:
-                        lines.append(f"- RSI{period}: {val:.1f}")
+            rsi_val = _last_valid(indicators.get("rsi"))
+            if rsi_val is not None:
+                lines.append(f"- RSI14: {rsi_val:.1f}")
 
             kd = indicators.get("kd", {})
             if kd:
-                lines.append(f"- K值: {kd.get('k', 'N/A')}, D值: {kd.get('d', 'N/A')}")
+                k_val = _last_valid(kd.get("k"))
+                d_val = _last_valid(kd.get("d"))
+                if k_val is not None or d_val is not None:
+                    k_str = f"{k_val:.1f}" if k_val is not None else "N/A"
+                    d_str = f"{d_val:.1f}" if d_val is not None else "N/A"
+                    lines.append(f"- K值: {k_str}, D值: {d_str}")
 
             signals = tech_detail.get("signals", [])
             if signals:
@@ -375,21 +412,25 @@ class ReportGenerator:
 ## 六、綜合評估與建議
 基於系統計算的綜合評分 {analysis.overall_score:.1f} 分及各維度分析結果，系統建議方向為「{signal_zh}」。請給出你的專業判斷：
 
-- 整體評級: {{BUY/SELL/HOLD}}（請參考系統建議但給出你的判斷）
-- 信心度: {{0.0-1.0}}
-- 風險等級: {{HIGH/MEDIUM/LOW}}
-- 短期展望 (1-2週): ...
-- 中期展望 (1-3月): ...
-- 長期展望 (3-12月): ...
-- 建議進場區間: ...
-- 停損價位: ...
-- 目標價位: ...
+- 整體評級: BUY 或 SELL 或 HOLD（請參考系統建議但給出你的判斷）
+- 信心度: 0.0 到 1.0 之間的數字
+- 風險等級: HIGH 或 MEDIUM 或 LOW
+- 短期展望 (1-2週): （請寫 60-100 字的完整一段，務必包含：方向研判、關鍵價位、預期時間點、明確操作動作）
+- 中期展望 (1-3月): （請寫 60-100 字的完整一段，結合基本面與籌碼面，給出價位區間與操作策略）
+- 長期展望 (3-12月): （請寫 60-100 字的完整一段，結合產業趨勢與估值，說明長期目標價位與布局建議）
+- 建議進場區間: 下限數字 至 上限數字
+- 停損價位: 具體數字
+- 目標價位: 具體數字
+
+三段展望的寫法範例（請模仿這種具體程度，不要只寫「上升」「看好」這類兩三個字）：
+「短期展望 (1-2週): 技術面偏多，MA5 與 MA20 黃金交叉、MACD 翻正，短線動能轉強。若量能持續放大，有機會挑戰 2400 元壓力；操作上可於 2300 元附近回測不破時分批布局，跌破 2200 元停損。」
 
 注意：
-1. 如果某個維度資料不足，請明確說明「資料不足，無法進行深入分析」
-2. 不要捏造或編造不存在的數據
-3. 報告中的所有數字須與提供的數據一致
-4. 建議進場區間、停損和目標價位請基於現有數據合理推估
+1. 如果某個維度資料不足，請明確說明「資料不足，無法進行深入分析」，但仍須根據已有的消息面與技術面資料給出展望，不可只寫兩三個字
+2. 不要捏造或編造不存在的數據；報告中的所有數字須與提供的數據一致
+3. 建議進場區間、停損和目標價位請基於現有數據合理推估，務必給出具體數字
+4. 三段展望每段至少 60 字，必須點出價位、時間點與操作動作，嚴禁只寫「上升」「看好」「謹慎」等空泛詞
+5. 每段展望各自寫成單獨一行，不要在段落中間換行，方便系統擷取
 """
         return prompt
 
@@ -471,6 +512,48 @@ class ReportGenerator:
 
         return "MEDIUM"
 
+    def _ensure_outlook(
+        self,
+        text: str,
+        period: str,
+        analysis: AnalysisResult,
+        target: Optional[float],
+        stop: Optional[float],
+    ) -> str:
+        """Return the LLM outlook, or synthesise one from real data if too short.
+
+        Only triggers when the model returned a near-empty value (e.g. "上漲").
+        The synthesised text uses computed scores and the extracted price levels
+        — no fabricated numbers.
+        """
+        if text and len(text.strip()) >= 20:
+            return text.strip()
+
+        score = analysis.overall_score
+        if score >= 20:
+            direction = "偏多"
+        elif score <= -20:
+            direction = "偏空"
+        else:
+            direction = "中性偏多" if score >= 0 else "中性偏空"
+
+        tech = analysis.scores.get("technical", 0)
+        news = analysis.scores.get("news", 0)
+        horizon = {"short": "1-2 週", "medium": "1-3 月", "long": "3-12 月"}[period]
+        focus = {
+            "short": "技術面與量能變化",
+            "medium": "基本面獲利動能與籌碼流向",
+            "long": "產業趨勢與長期估值",
+        }[period]
+
+        parts = [f"{horizon}方向研判{direction}（綜合評分 {score:.0f}、技術面 {tech:.0f}、消息面 {news:.0f}）"]
+        if target is not None and stop is not None:
+            parts.append(f"關鍵價位：上檔目標約 {target:.0f} 元、下檔停損約 {stop:.0f} 元")
+        elif target is not None:
+            parts.append(f"上檔目標約 {target:.0f} 元")
+        parts.append(f"建議聚焦{focus}，順勢操作並嚴設停損")
+        return "；".join(parts) + "。"
+
     def _extract_outlooks(self, report_text: str) -> dict:
         """Extract short/medium/long term outlooks from report.
 
@@ -482,38 +565,29 @@ class ReportGenerator:
         """
         outlooks = {"short": "", "medium": "", "long": ""}
 
-        # Short term
-        short_patterns = [
-            r"短期展望[^：:]*[：:]\s*(.+?)(?:\n|$)",
-            r"短期\s*\(1-2週?\)[：:]\s*(.+?)(?:\n|$)",
-        ]
-        for pattern in short_patterns:
-            match = re.search(pattern, report_text)
-            if match:
-                outlooks["short"] = match.group(1).strip()
-                break
+        def _clean(text: str) -> str:
+            t = text.strip().strip("*").replace("**", "").strip()
+            # Drop a leading separator the regex may have left (e.g. "，" or "-").
+            return t.lstrip("：:，,。-、 ").strip()
 
-        # Medium term
-        medium_patterns = [
-            r"中期展望[^：:]*[：:]\s*(.+?)(?:\n|$)",
-            r"中期\s*\(1-3月?\)[：:]\s*(.+?)(?:\n|$)",
-        ]
-        for pattern in medium_patterns:
-            match = re.search(pattern, report_text)
+        # The label may be followed by "(1-2週)" / "（1-2週）" then a separator
+        # that is a colon, comma OR nothing (the model is inconsistent), and the
+        # body can run as a paragraph until the next outlook label / section.
+        # `[^：:，,。\n]*` skips the optional "(timeframe)" before the separator.
+        label = r"[^：:，,。\n]*[：:，,]?\s*"
+        # Price-related fields (建議進場/停損/目標價) only end an outlook when they
+        # start a new line — otherwise an outlook mentioning "停損" mid-sentence
+        # would be truncated.
+        stop = r"\n\s*[-*#]|\n\s*建議進場|\n\s*停損|\n\s*目標價|\n\n|$"
+        patterns = {
+            "short": rf"短期展望{label}(.+?)(?=中期展望|長期展望|{stop})",
+            "medium": rf"中期展望{label}(.+?)(?=長期展望|{stop})",
+            "long": rf"長期展望{label}(.+?)(?={stop})",
+        }
+        for key, pattern in patterns.items():
+            match = re.search(pattern, report_text, re.DOTALL)
             if match:
-                outlooks["medium"] = match.group(1).strip()
-                break
-
-        # Long term
-        long_patterns = [
-            r"長期展望[^：:]*[：:]\s*(.+?)(?:\n|$)",
-            r"長期\s*\(3-12月?\)[：:]\s*(.+?)(?:\n|$)",
-        ]
-        for pattern in long_patterns:
-            match = re.search(pattern, report_text)
-            if match:
-                outlooks["long"] = match.group(1).strip()
-                break
+                outlooks[key] = _clean(match.group(1))
 
         return outlooks
 

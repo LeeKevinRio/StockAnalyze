@@ -17,8 +17,8 @@ interface ChipSummaryProps {
 
 function getTrendIcon(trend: string | undefined) {
   if (!trend) return { icon: '—', color: 'text-slate-400' };
-  if (trend === 'buying' || trend === 'bullish') return { icon: '▲', color: 'text-emerald-400' };
-  if (trend === 'selling' || trend === 'bearish') return { icon: '▼', color: 'text-red-400' };
+  if (trend === 'buying' || trend === 'bullish') return { icon: '▲', color: 'text-red-400' };
+  if (trend === 'selling' || trend === 'bearish') return { icon: '▼', color: 'text-emerald-400' };
   return { icon: '●', color: 'text-yellow-400' };
 }
 
@@ -42,9 +42,9 @@ function getSignalBadge(signal: string | undefined) {
   if (!signal) return { label: '—', cls: 'bg-slate-700 text-slate-400' };
   switch (signal) {
     case 'bullish':
-      return { label: '看多', cls: 'bg-emerald-500/20 text-emerald-400' };
+      return { label: '看多', cls: 'bg-red-500/20 text-red-400' };
     case 'bearish':
-      return { label: '看空', cls: 'bg-red-500/20 text-red-400' };
+      return { label: '看空', cls: 'bg-emerald-500/20 text-emerald-400' };
     default:
       return { label: '中性', cls: 'bg-yellow-500/20 text-yellow-400' };
   }
@@ -52,9 +52,9 @@ function getSignalBadge(signal: string | undefined) {
 
 function getScoreBg(score: number | undefined) {
   if (score == null) return 'bg-slate-700 text-slate-400';
-  if (score >= 70) return 'bg-emerald-500/20 text-emerald-400';
+  if (score >= 70) return 'bg-red-500/20 text-red-400';
   if (score >= 40) return 'bg-yellow-500/20 text-yellow-400';
-  return 'bg-red-500/20 text-red-400';
+  return 'bg-emerald-500/20 text-emerald-400';
 }
 
 export function ChipSummary({ analysis }: ChipSummaryProps) {
@@ -109,7 +109,7 @@ export function ChipSummary({ analysis }: ChipSummaryProps) {
           {/* Consecutive buying days */}
           <div className="rounded-lg bg-slate-800/50 p-3">
             <div className="text-xs text-slate-400">連續買超</div>
-            <div className="mt-1 text-lg font-bold text-emerald-400">
+            <div className="mt-1 text-lg font-bold text-red-400">
               {analysis?.consecutive_buy_days ?? 0}
               <span className="ml-0.5 text-xs font-normal text-slate-400">天</span>
             </div>
@@ -118,7 +118,7 @@ export function ChipSummary({ analysis }: ChipSummaryProps) {
           {/* Consecutive selling days */}
           <div className="rounded-lg bg-slate-800/50 p-3">
             <div className="text-xs text-slate-400">連續賣超</div>
-            <div className="mt-1 text-lg font-bold text-red-400">
+            <div className="mt-1 text-lg font-bold text-emerald-400">
               {analysis?.consecutive_sell_days ?? 0}
               <span className="ml-0.5 text-xs font-normal text-slate-400">天</span>
             </div>

@@ -15,6 +15,10 @@ export function useStockPrices(stockId: string | null, days = 60) {
   );
 }
 
+export function useHotStocksDetailed(limit = 8) {
+  return useSWR(`/stocks/hot-detailed/${limit}`, () => stockAPI.getHotDetailed(limit));
+}
+
 export function useStockSearch(query: string) {
   return useSWR(
     query.length >= 1 ? `/stock/search/${query}` : null,

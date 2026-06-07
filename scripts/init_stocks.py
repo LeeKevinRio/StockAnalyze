@@ -64,8 +64,12 @@ async def main():
     print(f"  Found {len(twse_stocks)} TWSE stocks")
 
     print("Fetching TPEx listed stocks...")
-    tpex_stocks = await fetch_stock_list(TPEX_STOCK_LIST_URL, "TPEx")
-    print(f"  Found {len(tpex_stocks)} TPEx stocks")
+    try:
+        tpex_stocks = await fetch_stock_list(TPEX_STOCK_LIST_URL, "TPEx")
+        print(f"  Found {len(tpex_stocks)} TPEx stocks")
+    except Exception as e:
+        tpex_stocks = []
+        print(f"  WARNING: TPEx fetch failed ({e}); continuing with TWSE stocks only")
 
     all_stocks = twse_stocks + tpex_stocks
     print(f"\nTotal: {len(all_stocks)} stocks")

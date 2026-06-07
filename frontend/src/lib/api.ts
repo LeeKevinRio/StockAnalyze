@@ -8,6 +8,7 @@ import type {
   SentimentTrend,
   SocialPost,
   HotStock,
+  HotStockDetailed,
   AnalysisScores,
   AnalysisReport,
 } from './types';
@@ -37,6 +38,7 @@ export const stockAPI = {
   getDetail: (id: string) => fetchAPI<StockDetail>(`/api/v1/stocks/${id}`),
   getPrices: (id: string, days = 60) => fetchAPI<StockPrice[]>(`/api/v1/stocks/${id}/prices?days=${days}`),
   getHot: () => fetchAPI<StockSearchResult[]>(`/api/v1/stocks/hot`),
+  getHotDetailed: (limit = 8) => fetchAPI<HotStockDetailed[]>(`/api/v1/stocks/hot-detailed?limit=${limit}`),
 };
 
 // News APIs
@@ -58,4 +60,5 @@ export const sentimentAPI = {
 export const analysisAPI = {
   getScores: (id: string) => fetchAPI<AnalysisScores>(`/api/v1/analysis/${id}/scores`),
   getReport: (id: string) => fetchAPI<AnalysisReport>(`/api/v1/analysis/${id}/report`),
+  refresh: (id: string) => fetchAPI<AnalysisReport>(`/api/v1/analysis/${id}/refresh`, { method: 'POST' }),
 };
