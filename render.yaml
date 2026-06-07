@@ -1,0 +1,35 @@
+# Render Blueprint — one-click deploy of the backend API + a free Postgres DB.
+# In Render: New → Blueprint → pick this repo. Then fill in the two LLM keys.
+services:
+  - type: web
+    name: stockanalyze-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      # GitHub Pages origin (frontend). Update if your Pages URL differs.
+      - key: CORS_ORIGINS
+        value: https://leekevinrio.github.io
+      # Wired automatically from the database below.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stockanalyze-db
+          property: connectionString
+      # Secrets — enter these in the Render dashboard (sync:false = not in git).
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+
+databases:
+  - name: stockanalyze-db
+    plan: free
+    databaseName: stock_analyze
+    user: postgres
