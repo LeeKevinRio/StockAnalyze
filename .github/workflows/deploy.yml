@@ -2,7 +2,7 @@ name: Deploy Frontend to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/optimistic-mayer]
   workflow_dispatch:
 
 permissions:
@@ -37,7 +37,8 @@ jobs:
       - name: Build static export
         env:
           GITHUB_PAGES: 'true'
-          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          # Hardcoded to the Render backend so no repo variable is needed.
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'https://stockanalyze-api.onrender.com' }}
         run: npx next build
 
       - name: Add .nojekyll
