@@ -34,6 +34,10 @@ async def get_institutional_data(
     db: AsyncSession = Depends(get_db),
 ):
     """Get institutional trading data with analysis."""
+    # On-demand: backfill institutional + margin data if this stock has none yet.
+    from app.services.ondemand import ensure_institutional
+    await ensure_institutional(stock_id, db)
+
     data = await institutional_service.get_institutional_data(stock_id, db, days)
 
     if not data:

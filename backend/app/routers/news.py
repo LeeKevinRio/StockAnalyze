@@ -34,14 +34,31 @@ async def get_stock_news(
     db: AsyncSession = Depends(get_db),
 ):
     """Get news for a specific stock."""
-    query = (
-        select(StockNews)
-        .where(StockNews.stock_id == stock_id)
-        .order_by(StockNews.published_at.desc())
-        .limit(limit)
-    )
-    result = await db.execute(query)
-    return result.scalars().all()
+    def _query():
+        return (
+            select(StockNews)
+            .where(StockNews.stock_id == stock_id)
+            .order_by(StockNews.published_at.desc())
+            .limit(limit)
+        )
+
+    result = await db.execute(_query())
+    rows = result.scalars().all()
+
+    # On-demand: fetch news (with sentiment) the first time a stock is viewed.
+    if not rows:
+        from app.models.stock import Stock
+        from app.services.news_service import fetch_and_store_news
+        stock = (await db.execute(select(Stock).where(Stock.stock_id == stock_id))).scalar_one_or_none()
+        if stock:
+            try:
+                await fetch_and_store_news(stock_id, stock.name, db)
+                await db.commit()
+                rows = (await db.execute(_query())).scalars().all()
+            except Exception:
+                pass
+
+    return rows
 
 
 @router.get("/{stock_id}/sentiment-trend", response_model=list[NewsSentimentTrend])

@@ -41,6 +41,10 @@ async def get_fundamental_analysis(
     """Get latest fundamental data with full analysis and scoring."""
     stock = await _get_stock_or_404(stock_id, db)
 
+    # On-demand: backfill fundamentals if this stock has none yet.
+    from app.services.ondemand import ensure_fundamentals
+    await ensure_fundamentals(stock_id, db)
+
     fundamentals = await fundamental_service.get_fundamentals(stock_id, db)
     statements = await fundamental_service.get_financial_statements(stock_id, db, quarters=8)
     dividends = await fundamental_service.get_dividends(stock_id, db, years=5)
