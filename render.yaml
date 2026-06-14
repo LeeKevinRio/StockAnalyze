@@ -14,9 +14,9 @@ services:
         value: production
       - key: APP_DEBUG
         value: "false"
-      # GitHub Pages origin (frontend). Update if your Pages URL differs.
+      # Allowed frontend origins: GitHub Pages + local dev.
       - key: CORS_ORIGINS
-        value: https://leekevinrio.github.io
+        value: https://leekevinrio.github.io,http://localhost:3000
       # Wired automatically from the database below.
       - key: DATABASE_URL
         fromDatabase:
