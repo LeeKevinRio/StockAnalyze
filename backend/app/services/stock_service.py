@@ -149,6 +149,85 @@ async def sync_daily_prices(
     return new_count
 
 
+# Per-stock locks so concurrent requests don't double-fetch the same stock.
+import asyncio as _asyncio
+
+_price_locks: dict[str, "_asyncio.Lock"] = {}
+
+
+async def ensure_price_history(
+    stock_id: str,
+    db: AsyncSession,
+    period: str = "6mo",
+) -> int:
+    """On-demand backfill: if a stock has no price history, fetch it from
+    yfinance and store it. Safe to call concurrently (per-stock lock).
+
+    Returns the number of rows inserted (0 if data already existed or none
+    was available).
+    """
+    exists = (
+        await db.execute(
+            select(StockPrice.id).where(StockPrice.stock_id == stock_id).limit(1)
+        )
+    ).scalar_one_or_none()
+    if exists is not None:
+        return 0
+
+    lock = _price_locks.setdefault(stock_id, _asyncio.Lock())
+    async with lock:
+        # Re-check after acquiring the lock (another request may have filled it).
+        exists = (
+            await db.execute(
+                select(StockPrice.id).where(StockPrice.stock_id == stock_id).limit(1)
+            )
+        ).scalar_one_or_none()
+        if exists is not None:
+            return 0
+
+        def _fetch():
+            import yfinance as yf
+            for suffix in (".TW", ".TWO"):
+                try:
+                    hist = yf.Ticker(f"{stock_id}{suffix}").history(period=period)
+                    if hist is not None and not hist.empty:
+                        return hist
+                except Exception:
+                    continue
+            return None
+
+        try:
+            hist = await _asyncio.to_thread(_fetch)
+        except Exception:
+            logger.exception("yfinance fetch failed for %s", stock_id)
+            return 0
+        if hist is None or hist.empty:
+            logger.info("No yfinance price data for %s", stock_id)
+            return 0
+
+        n = 0
+        for idx, row in hist.iterrows():
+            try:
+                d = idx.date()
+                db.add(
+                    StockPrice(
+                        stock_id=stock_id,
+                        date=d,
+                        open=Decimal(str(round(float(row["Open"]), 2))),
+                        high=Decimal(str(round(float(row["High"]), 2))),
+                        low=Decimal(str(round(float(row["Low"]), 2))),
+                        close=Decimal(str(round(float(row["Close"]), 2))),
+                        volume=int(row["Volume"]) if row["Volume"] == row["Volume"] else 0,
+                    )
+                )
+                n += 1
+            except (TypeError, ValueError, InvalidOperation):
+                continue
+        await db.commit()
+        logger.info("On-demand backfilled %d price rows for %s", n, stock_id)
+        return n
+
+
 async def get_stock(stock_id: str, db: AsyncSession) -> Stock | None:
     """Retrieve a single stock by its ID.
 

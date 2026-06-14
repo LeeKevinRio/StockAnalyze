@@ -123,6 +123,10 @@ async def get_stock_detail(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=f"Stock {stock_id} not found")
 
+    # On-demand: fetch price history if this stock has none yet.
+    from app.services.stock_service import ensure_price_history
+    await ensure_price_history(stock_id, db)
+
     # Get latest price
     price_result = await db.execute(
         select(StockPrice)
@@ -145,6 +149,10 @@ async def get_stock_prices(
     db: AsyncSession = Depends(get_db),
 ):
     """Get historical price data."""
+    # On-demand: fetch price history if this stock has none yet.
+    from app.services.stock_service import ensure_price_history
+    await ensure_price_history(stock_id, db)
+
     query = (
         select(StockPrice)
         .where(StockPrice.stock_id == stock_id)

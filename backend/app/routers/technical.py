@@ -26,6 +26,10 @@ async def _fetch_prices(
     db: AsyncSession,
 ) -> list[dict]:
     """Fetch OHLCV price data from DB, returned sorted by date ascending."""
+    # On-demand: backfill price history if missing so any stock works.
+    from app.services.stock_service import ensure_price_history
+    await ensure_price_history(stock_id, db)
+
     stmt = (
         select(StockPrice)
         .where(StockPrice.stock_id == stock_id)
