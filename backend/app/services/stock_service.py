@@ -158,14 +158,21 @@ _price_locks: dict[str, "_asyncio.Lock"] = {}
 async def ensure_price_history(
     stock_id: str,
     db: AsyncSession,
-    period: str = "6mo",
+    days: int = 180,
 ) -> int:
-    """On-demand backfill: if a stock has no price history, fetch it from
-    yfinance and store it. Safe to call concurrently (per-stock lock).
+    """On-demand backfill: if a stock has no price history, fetch ~6 months
+    from FinMind and store it. Safe to call concurrently (per-stock lock).
+
+    FinMind is used instead of yfinance because Yahoo Finance blocks
+    datacenter IPs (e.g. Render), whereas FinMind works from the cloud.
 
     Returns the number of rows inserted (0 if data already existed or none
     was available).
     """
+    from datetime import timedelta
+
+    import httpx
+
     exists = (
         await db.execute(
             select(StockPrice.id).where(StockPrice.stock_id == stock_id).limit(1)
@@ -185,46 +192,42 @@ async def ensure_price_history(
         if exists is not None:
             return 0
 
-        def _fetch():
-            import yfinance as yf
-            for suffix in (".TW", ".TWO"):
-                try:
-                    hist = yf.Ticker(f"{stock_id}{suffix}").history(period=period)
-                    if hist is not None and not hist.empty:
-                        return hist
-                except Exception:
-                    continue
-            return None
-
+        start = (date.today() - timedelta(days=days)).isoformat()
         try:
-            hist = await _asyncio.to_thread(_fetch)
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    "https://api.finmindtrade.com/api/v4/data",
+                    params={"dataset": "TaiwanStockPrice", "data_id": stock_id, "start_date": start},
+                )
+                resp.raise_for_status()
+                payload = resp.json()
         except Exception:
-            logger.exception("yfinance fetch failed for %s", stock_id)
+            logger.exception("FinMind price fetch failed for %s", stock_id)
             return 0
-        if hist is None or hist.empty:
-            logger.info("No yfinance price data for %s", stock_id)
+
+        if payload.get("msg") != "success" or not payload.get("data"):
+            logger.info("No FinMind price data for %s", stock_id)
             return 0
 
         n = 0
-        for idx, row in hist.iterrows():
+        for row in payload["data"]:
             try:
-                d = idx.date()
                 db.add(
                     StockPrice(
                         stock_id=stock_id,
-                        date=d,
-                        open=Decimal(str(round(float(row["Open"]), 2))),
-                        high=Decimal(str(round(float(row["High"]), 2))),
-                        low=Decimal(str(round(float(row["Low"]), 2))),
-                        close=Decimal(str(round(float(row["Close"]), 2))),
-                        volume=int(row["Volume"]) if row["Volume"] == row["Volume"] else 0,
+                        date=date.fromisoformat(row["date"]),
+                        open=Decimal(str(round(float(row["open"]), 2))),
+                        high=Decimal(str(round(float(row["max"]), 2))),
+                        low=Decimal(str(round(float(row["min"]), 2))),
+                        close=Decimal(str(round(float(row["close"]), 2))),
+                        volume=int(row.get("Trading_Volume") or 0),
                     )
                 )
                 n += 1
-            except (TypeError, ValueError, InvalidOperation):
+            except (TypeError, ValueError, InvalidOperation, KeyError):
                 continue
         await db.commit()
-        logger.info("On-demand backfilled %d price rows for %s", n, stock_id)
+        logger.info("On-demand backfilled %d price rows for %s (FinMind)", n, stock_id)
         return n
 
 

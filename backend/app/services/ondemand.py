@@ -50,6 +50,10 @@ def _i(v):
 # ---------------------------------------------------------------------------
 
 async def ensure_fundamentals(stock_id: str, db: AsyncSession) -> int:
+    """Backfill fundamentals from FinMind (PER + financial statements).
+
+    Uses FinMind rather than yfinance because Yahoo blocks datacenter IPs.
+    """
     exists = (
         await db.execute(select(StockFundamental.id).where(StockFundamental.stock_id == stock_id).limit(1))
     ).scalar_one_or_none()
@@ -63,65 +67,71 @@ async def ensure_fundamentals(stock_id: str, db: AsyncSession) -> int:
         if exists is not None:
             return 0
 
-        def _fetch():
-            import yfinance as yf
-            for suffix in (".TW", ".TWO"):
-                t = yf.Ticker(f"{stock_id}{suffix}")
-                info = t.info or {}
-                if info.get("trailingPE") or info.get("marketCap") or info.get("trailingEps"):
-                    return info, t.quarterly_financials, t.quarterly_balance_sheet, t.quarterly_cashflow, t.dividends
+        per_start = (date.today() - timedelta(days=400)).isoformat()
+        fs_start = (date.today() - timedelta(days=800)).isoformat()
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                per = await _finmind(client, "TaiwanStockPER", stock_id, per_start)
+                fs = await _finmind(client, "TaiwanStockFinancialStatements", stock_id, fs_start)
+        except Exception:
+            logger.exception("FinMind fundamentals fetch failed for %s", stock_id)
+            return 0
+
+        if not per and not fs:
+            return 0
+
+        # Latest valuation from PER dataset.
+        latest_per = per[-1] if per else {}
+
+        # Pivot financial statements: {date: {type: value}}.
+        by_date: dict[str, dict] = defaultdict(dict)
+        for r in fs:
+            by_date[r["date"]][r.get("type")] = r.get("value")
+        dates_sorted = sorted(by_date.keys())
+
+        def g(d, *types):
+            for t in types:
+                v = by_date[d].get(t)
+                if v is not None:
+                    return v
             return None
 
-        try:
-            res = await asyncio.to_thread(_fetch)
-        except Exception:
-            logger.exception("yfinance fundamentals fetch failed for %s", stock_id)
-            return 0
-        if not res:
-            return 0
-        info, fin, bs, cf, divs = res
+        # Quarterly statement rows (last 8).
+        for d in dates_sorted[-8:]:
+            dt = date.fromisoformat(d)
+            db.add(FinancialStatement(
+                stock_id=stock_id, report_year=dt.year, report_quarter=(dt.month - 1) // 3 + 1,
+                revenue=_dec(g(d, "Revenue")),
+                gross_profit=_dec(g(d, "GrossProfit")),
+                operating_income=_dec(g(d, "OperatingIncome", "OperatingProfit")),
+                net_income=_dec(g(d, "IncomeAfterTax", "IncomeAfterTaxes", "TotalConsolidatedProfitForThePeriod")),
+            ))
 
-        def _row(df, label, col):
+        # Valuation snapshot from the latest quarter + PER.
+        latest_d = dates_sorted[-1] if dates_sorted else None
+        rev = g(latest_d, "Revenue") if latest_d else None
+        ni = g(latest_d, "IncomeAfterTax", "IncomeAfterTaxes") if latest_d else None
+        gp = g(latest_d, "GrossProfit") if latest_d else None
+        oi = g(latest_d, "OperatingIncome", "OperatingProfit") if latest_d else None
+        # Trailing EPS = sum of last 4 quarters' EPS if available.
+        eps_vals = [by_date[d].get("EPS") for d in dates_sorted[-4:] if by_date[d].get("EPS") is not None]
+        eps_ttm = sum(eps_vals) if eps_vals else None
+
+        def margin(num):
             try:
-                if df is None or df.empty or label not in df.index or col not in df.columns:
-                    return None
-                return df.loc[label, col]
-            except Exception:
+                return _dec(float(num) / float(rev) * 100) if num and rev else None
+            except (TypeError, ValueError, ZeroDivisionError):
                 return None
 
         db.add(StockFundamental(
             stock_id=stock_id, report_date=date.today(),
-            pe_ratio=_dec(info.get("trailingPE")), pb_ratio=_dec(info.get("priceToBook")),
-            eps=_dec(info.get("trailingEps")), roe=_dec(info.get("returnOnEquity"), 100),
-            roa=_dec(info.get("returnOnAssets"), 100), gross_margin=_dec(info.get("grossMargins"), 100),
-            operating_margin=_dec(info.get("operatingMargins"), 100), net_margin=_dec(info.get("profitMargins"), 100),
-            revenue=_dec(info.get("totalRevenue")), market_cap=_dec(info.get("marketCap")),
+            pe_ratio=_dec(latest_per.get("PER")), pb_ratio=_dec(latest_per.get("PBR")),
+            eps=_dec(eps_ttm), revenue=_dec(rev),
+            gross_margin=margin(gp), operating_margin=margin(oi), net_margin=margin(ni),
         ))
 
-        cols = list(fin.columns)[:8] if fin is not None and not fin.empty else []
-        for col in cols:
-            y, q = col.year, (col.month - 1) // 3 + 1
-            db.add(FinancialStatement(
-                stock_id=stock_id, report_year=y, report_quarter=q,
-                revenue=_dec(_row(fin, "Total Revenue", col)), gross_profit=_dec(_row(fin, "Gross Profit", col)),
-                operating_income=_dec(_row(fin, "Operating Income", col)), net_income=_dec(_row(fin, "Net Income", col)),
-                total_assets=_dec(_row(bs, "Total Assets", col)), total_equity=_dec(_row(bs, "Stockholders Equity", col)),
-                operating_cash_flow=_dec(_row(cf, "Operating Cash Flow", col)), free_cash_flow=_dec(_row(cf, "Free Cash Flow", col)),
-            ))
-
-        try:
-            if divs is not None and not divs.empty:
-                by_year: dict[int, float] = {}
-                for ts, amt in divs.items():
-                    by_year[ts.year] = by_year.get(ts.year, 0.0) + float(amt)
-                for y, cash in sorted(by_year.items())[-6:]:
-                    db.add(StockDividend(stock_id=stock_id, year=y, cash_dividend=_dec(cash),
-                                         dividend_yield=_dec(info.get("dividendYield"))))
-        except Exception:
-            pass
-
         await db.commit()
-        logger.info("On-demand fundamentals backfilled for %s", stock_id)
+        logger.info("On-demand fundamentals backfilled for %s (FinMind)", stock_id)
         return 1
 
 
