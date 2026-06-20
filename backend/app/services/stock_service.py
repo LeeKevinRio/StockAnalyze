@@ -160,44 +160,55 @@ async def ensure_price_history(
     db: AsyncSession,
     days: int = 180,
 ) -> int:
-    """On-demand backfill: if a stock has no price history, fetch ~6 months
-    from FinMind and store it. Safe to call concurrently (per-stock lock).
+    """Keep a stock's price history fresh from FinMind.
 
-    FinMind is used instead of yfinance because Yahoo Finance blocks
-    datacenter IPs (e.g. Render), whereas FinMind works from the cloud.
+    - No data yet  → backfill ~6 months.
+    - Data is stale → incrementally append the missing recent trading days.
+    - Already up to the last trading day → no-op.
 
-    Returns the number of rows inserted (0 if data already existed or none
-    was available).
+    FinMind is used instead of yfinance because Yahoo Finance blocks datacenter
+    IPs (e.g. Render). Safe to call concurrently (per-stock lock).
     """
     from datetime import timedelta
 
     import httpx
 
-    exists = (
+    target = get_last_trading_day()
+    max_date = (
         await db.execute(
-            select(StockPrice.id).where(StockPrice.stock_id == stock_id).limit(1)
+            select(StockPrice.date)
+            .where(StockPrice.stock_id == stock_id)
+            .order_by(StockPrice.date.desc())
+            .limit(1)
         )
     ).scalar_one_or_none()
-    if exists is not None:
-        return 0
+    if max_date is not None and max_date >= target:
+        return 0  # already fresh
 
     lock = _price_locks.setdefault(stock_id, _asyncio.Lock())
     async with lock:
-        # Re-check after acquiring the lock (another request may have filled it).
-        exists = (
+        # Re-check after acquiring the lock (another request may have updated it).
+        max_date = (
             await db.execute(
-                select(StockPrice.id).where(StockPrice.stock_id == stock_id).limit(1)
+                select(StockPrice.date)
+                .where(StockPrice.stock_id == stock_id)
+                .order_by(StockPrice.date.desc())
+                .limit(1)
             )
         ).scalar_one_or_none()
-        if exists is not None:
+        if max_date is not None and max_date >= target:
             return 0
 
-        start = (date.today() - timedelta(days=days)).isoformat()
+        if max_date is None:
+            start_date = date.today() - timedelta(days=days)
+        else:
+            start_date = max_date - timedelta(days=5)  # small overlap buffer
+
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     "https://api.finmindtrade.com/api/v4/data",
-                    params={"dataset": "TaiwanStockPrice", "data_id": stock_id, "start_date": start},
+                    params={"dataset": "TaiwanStockPrice", "data_id": stock_id, "start_date": start_date.isoformat()},
                 )
                 resp.raise_for_status()
                 payload = resp.json()
@@ -209,13 +220,27 @@ async def ensure_price_history(
             logger.info("No FinMind price data for %s", stock_id)
             return 0
 
+        # Skip dates we already have.
+        existing = set(
+            (
+                await db.execute(
+                    select(StockPrice.date).where(
+                        StockPrice.stock_id == stock_id, StockPrice.date >= start_date
+                    )
+                )
+            ).scalars().all()
+        )
+
         n = 0
         for row in payload["data"]:
             try:
+                d = date.fromisoformat(row["date"])
+                if d in existing:
+                    continue
                 db.add(
                     StockPrice(
                         stock_id=stock_id,
-                        date=date.fromisoformat(row["date"]),
+                        date=d,
                         open=Decimal(str(round(float(row["open"]), 2))),
                         high=Decimal(str(round(float(row["max"]), 2))),
                         low=Decimal(str(round(float(row["min"]), 2))),
@@ -223,11 +248,12 @@ async def ensure_price_history(
                         volume=int(row.get("Trading_Volume") or 0),
                     )
                 )
+                existing.add(d)
                 n += 1
             except (TypeError, ValueError, InvalidOperation, KeyError):
                 continue
         await db.commit()
-        logger.info("On-demand backfilled %d price rows for %s (FinMind)", n, stock_id)
+        logger.info("Price history for %s: +%d rows (FinMind, up to %s)", stock_id, n, target)
         return n
 
 

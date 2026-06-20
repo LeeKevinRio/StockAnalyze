@@ -53,14 +53,15 @@ async def get_hot_detailed(
     Returns the stocks that actually have price data (excluding the market
     index), sorted by absolute daily change so the most active appear first.
     """
-    ids = (
-        await db.execute(
-            select(StockPrice.stock_id).where(StockPrice.stock_id != "TAIEX").distinct()
-        )
-    ).scalars().all()
+    # Curated popular list — bounded + relevant, kept fresh on each load.
+    ids = ["2330", "2317", "2454", "2308", "2882", "2603", "2881", "2412"]
+
+    from app.services.stock_service import ensure_price_history
 
     out = []
     for sid in ids:
+        # Keep hot-list prices fresh (incremental; no-op if already up to date).
+        await ensure_price_history(sid, db)
         prices = (
             await db.execute(
                 select(StockPrice)

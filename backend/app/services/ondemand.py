@@ -140,20 +140,31 @@ async def ensure_fundamentals(stock_id: str, db: AsyncSession) -> int:
 # ---------------------------------------------------------------------------
 
 async def ensure_institutional(stock_id: str, db: AsyncSession) -> int:
-    exists = (
-        await db.execute(select(InstitutionalTrading.id).where(InstitutionalTrading.stock_id == stock_id).limit(1))
+    """Keep institutional + margin data fresh (incremental top-up to last trading day)."""
+    from app.utils.date_utils import get_last_trading_day
+
+    target = get_last_trading_day()
+    max_date = (
+        await db.execute(
+            select(InstitutionalTrading.date).where(InstitutionalTrading.stock_id == stock_id)
+            .order_by(InstitutionalTrading.date.desc()).limit(1)
+        )
     ).scalar_one_or_none()
-    if exists is not None:
+    if max_date is not None and max_date >= target:
         return 0
     lock = _inst_locks.setdefault(stock_id, asyncio.Lock())
     async with lock:
-        exists = (
-            await db.execute(select(InstitutionalTrading.id).where(InstitutionalTrading.stock_id == stock_id).limit(1))
+        max_date = (
+            await db.execute(
+                select(InstitutionalTrading.date).where(InstitutionalTrading.stock_id == stock_id)
+                .order_by(InstitutionalTrading.date.desc()).limit(1)
+            )
         ).scalar_one_or_none()
-        if exists is not None:
+        if max_date is not None and max_date >= target:
             return 0
 
-        start = (date.today() - timedelta(days=75)).isoformat()
+        start_date = (max_date - timedelta(days=5)) if max_date else (date.today() - timedelta(days=75))
+        start = start_date.isoformat()
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 inst = await _finmind(client, "TaiwanStockInstitutionalInvestorsBuySell", stock_id, start)
@@ -161,6 +172,15 @@ async def ensure_institutional(stock_id: str, db: AsyncSession) -> int:
         except Exception:
             logger.exception("FinMind fetch failed for %s", stock_id)
             return 0
+
+        inst_have = set((await db.execute(
+            select(InstitutionalTrading.date).where(
+                InstitutionalTrading.stock_id == stock_id, InstitutionalTrading.date >= start_date)
+        )).scalars().all())
+        margin_have = set((await db.execute(
+            select(MarginTrading.date).where(
+                MarginTrading.stock_id == stock_id, MarginTrading.date >= start_date)
+        )).scalars().all())
 
         per_date = defaultdict(lambda: {"f_b": 0, "f_s": 0, "t_b": 0, "t_s": 0, "d_b": 0, "d_s": 0})
         for r in inst:
@@ -174,23 +194,29 @@ async def ensure_institutional(stock_id: str, db: AsyncSession) -> int:
                 per_date[d]["d_b"] += b; per_date[d]["d_s"] += s
         n = 0
         for d, v in per_date.items():
+            dd = date.fromisoformat(d)
+            if dd in inst_have:
+                continue
             f, t, dl = v["f_b"] - v["f_s"], v["t_b"] - v["t_s"], v["d_b"] - v["d_s"]
             db.add(InstitutionalTrading(
-                stock_id=stock_id, date=date.fromisoformat(d),
+                stock_id=stock_id, date=dd,
                 foreign_buy=v["f_b"], foreign_sell=v["f_s"], foreign_net=f,
                 trust_buy=v["t_b"], trust_sell=v["t_s"], trust_net=t,
                 dealer_buy=v["d_b"], dealer_sell=v["d_s"], dealer_net=dl, total_net=f + t + dl,
             )); n += 1
         for r in margin:
+            dd = date.fromisoformat(r["date"])
+            if dd in margin_have:
+                continue
             db.add(MarginTrading(
-                stock_id=stock_id, date=date.fromisoformat(r["date"]),
+                stock_id=stock_id, date=dd,
                 margin_buy=_i(r.get("MarginPurchaseBuy")), margin_sell=_i(r.get("MarginPurchaseSell")),
                 margin_balance=_i(r.get("MarginPurchaseTodayBalance")),
                 short_buy=_i(r.get("ShortSaleBuy")), short_sell=_i(r.get("ShortSaleSell")),
                 short_balance=_i(r.get("ShortSaleTodayBalance")),
             ))
         await db.commit()
-        logger.info("On-demand institutional backfilled %d days for %s", n, stock_id)
+        logger.info("Institutional for %s: +%d days (up to %s)", stock_id, n, target)
         return n
 
 
