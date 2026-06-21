@@ -30,7 +30,7 @@ export function StockQuoteCard({ stock }: { stock: HotStockDetailed }) {
     <Card className="border-slate-800 bg-slate-900 transition-colors hover:border-emerald-500/40 hover:bg-slate-800/80">
       <CardContent className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <Link href={`/stock?id=${stock.stock_id}`} className="flex min-w-0 flex-1 items-baseline gap-2">
+          <Link href={`/stock/?id=${stock.stock_id}`} className="flex min-w-0 flex-1 items-baseline gap-2">
             <span className="truncate text-sm font-medium text-white">{stock.name}</span>
             <span className="shrink-0 font-mono text-xs text-slate-500">{stock.stock_id}</span>
           </Link>
@@ -42,7 +42,7 @@ export function StockQuoteCard({ stock }: { stock: HotStockDetailed }) {
             <Star className="h-4 w-4" fill={starred ? 'currentColor' : 'none'} />
           </button>
         </div>
-        <Link href={`/stock?id=${stock.stock_id}`} className="block space-y-2">
+        <Link href={`/stock/?id=${stock.stock_id}`} className="block space-y-2">
           <div>
             <div className="text-xl font-bold text-white">
               {stock.close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

@@ -17,7 +17,9 @@ function StockContent() {
     );
   }
 
-  return <StockPageClient stockId={stockId} />;
+  // key forces a clean remount when the id changes (avoids stale state when
+  // navigating stock→stock).
+  return <StockPageClient key={stockId} stockId={stockId} />;
 }
 
 export default function StockPage() {

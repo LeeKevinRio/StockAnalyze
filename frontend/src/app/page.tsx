@@ -46,7 +46,7 @@ export default function HomePage() {
   function handleSelect(stockId: string) {
     setIsOpen(false);
     setQuery('');
-    router.push(`/stock?id=${stockId}`);
+    router.push(`/stock/?id=${stockId}`);
   }
 
   const todayStr = new Date().toLocaleDateString('zh-TW', {

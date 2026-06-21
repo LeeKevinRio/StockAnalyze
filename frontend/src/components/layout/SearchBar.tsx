@@ -37,7 +37,7 @@ export function SearchBar() {
   function handleSelect(stockId: string) {
     setIsOpen(false);
     setQuery('');
-    router.push(`/stock?id=${stockId}`);
+    router.push(`/stock/?id=${stockId}`);
   }
 
   return (
