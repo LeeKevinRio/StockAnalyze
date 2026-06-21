@@ -2,7 +2,7 @@
 
 import useSWR from 'swr';
 import Link from 'next/link';
-import { Star, Search } from 'lucide-react';
+import { Star, Search, LogIn } from 'lucide-react';
 import { stockAPI } from '@/lib/api';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { StockQuoteCard } from '@/components/stock/StockQuoteCard';
@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function WatchlistPage() {
-  const { ids } = useWatchlist();
+  const { ids, loggedIn } = useWatchlist();
   const { data, isLoading } = useSWR(
     ids.length ? `/batch/${ids.join(',')}` : null,
     () => stockAPI.getBatch(ids),
@@ -22,10 +22,26 @@ export default function WatchlistPage() {
         <header className="mb-6 flex items-center gap-2">
           <Star className="h-6 w-6 text-amber-400" fill="currentColor" />
           <h1 className="text-2xl font-bold text-white">自選股</h1>
-          {ids.length > 0 && <span className="text-sm text-slate-400">{ids.length} 檔</span>}
+          {loggedIn && ids.length > 0 && <span className="text-sm text-slate-400">{ids.length} 檔</span>}
         </header>
 
-        {ids.length === 0 ? (
+        {!loggedIn ? (
+          <Card className="border-slate-800 bg-slate-900">
+            <CardContent className="flex flex-col items-center gap-4 py-16 text-center">
+              <Star className="h-10 w-10 text-slate-600" />
+              <div>
+                <p className="text-white">登入後即可使用自選股</p>
+                <p className="mt-1 text-sm text-slate-400">自選股會儲存在雲端，跨裝置同步、永久保存。</p>
+              </div>
+              <Link
+                href="/login"
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+              >
+                <LogIn className="h-4 w-4" /> 登入 / 註冊
+              </Link>
+            </CardContent>
+          </Card>
+        ) : ids.length === 0 ? (
           <Card className="border-slate-800 bg-slate-900">
             <CardContent className="flex flex-col items-center gap-4 py-16 text-center">
               <Star className="h-10 w-10 text-slate-600" />

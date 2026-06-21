@@ -14,9 +14,13 @@ import {
   Bell,
   Settings,
   Moon,
+  LogIn,
+  LogOut,
+  UserCircle,
 } from 'lucide-react';
 import { SearchBar } from './SearchBar';
 import { MarketIndexWidget } from './MarketIndexWidget';
+import { useAuth } from '@/hooks/useAuth';
 
 interface NavItem {
   label: string;
@@ -40,6 +44,7 @@ const NAV: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { loggedIn, email, logout } = useAuth();
 
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-60 flex-col border-r border-slate-800 bg-slate-900">
@@ -94,6 +99,28 @@ export function Sidebar() {
           })}
         </ul>
       </nav>
+
+      {/* Auth */}
+      <div className="px-3 pb-2">
+        {loggedIn ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+            <span className="flex min-w-0 items-center gap-2">
+              <UserCircle className="h-4 w-4 shrink-0 text-emerald-400" />
+              <span className="truncate text-xs text-slate-300">{email}</span>
+            </span>
+            <button onClick={logout} title="登出" className="shrink-0 text-slate-500 transition-colors hover:text-red-400">
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <Link
+            href="/login"
+            className="flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-slate-800"
+          >
+            <LogIn className="h-4 w-4" /> 登入 / 註冊
+          </Link>
+        )}
+      </div>
 
       {/* Market index widget */}
       <div className="px-3 pb-2">

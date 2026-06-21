@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import {
   Newspaper,
@@ -144,8 +145,9 @@ export default function StockPageClient({ stockId }: StockPageClientProps) {
   const { data: scores, isLoading: scoresLoading, mutate: mutateScores } = useAnalysisScores(stockId);
   const { data: report, isLoading: reportLoading, mutate: mutateReport } = useAnalysisReport(stockId);
 
-  // Watchlist (browser-local)
-  const { has: inWatchlist, toggle: toggleWatchlist } = useWatchlist();
+  // Watchlist (server-side, requires login)
+  const router = useRouter();
+  const { has: inWatchlist, toggle: toggleWatchlist, loggedIn } = useWatchlist();
 
   // AI analysis generation
   const [generating, setGenerating] = useState(false);
@@ -234,8 +236,8 @@ export default function StockPageClient({ stockId }: StockPageClientProps) {
                 </h1>
                 <span className="font-mono text-lg text-slate-400">{stock?.stock_id ?? stockId}</span>
                 <button
-                  onClick={() => toggleWatchlist(stockId)}
-                  title={inWatchlist(stockId) ? '移除自選' : '加入自選'}
+                  onClick={() => { if (loggedIn) toggleWatchlist(stockId); else router.push('/login'); }}
+                  title={loggedIn ? (inWatchlist(stockId) ? '移除自選' : '加入自選') : '登入後加入自選'}
                   className={`transition-colors ${inWatchlist(stockId) ? 'text-amber-400' : 'text-slate-500 hover:text-amber-400'}`}
                 >
                   <Star className="h-5 w-5" fill={inWatchlist(stockId) ? 'currentColor' : 'none'} />

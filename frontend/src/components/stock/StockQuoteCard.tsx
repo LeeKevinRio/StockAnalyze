@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Star } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Sparkline } from '@/components/common/Sparkline';
@@ -19,7 +20,8 @@ function signalLabel(signal: string | null): { label: string; cls: string } | nu
 }
 
 export function StockQuoteCard({ stock }: { stock: HotStockDetailed }) {
-  const { has, toggle } = useWatchlist();
+  const router = useRouter();
+  const { has, toggle, loggedIn } = useWatchlist();
   const up = stock.change >= 0;
   const sig = signalLabel(stock.signal);
   const starred = has(stock.stock_id);
@@ -33,8 +35,8 @@ export function StockQuoteCard({ stock }: { stock: HotStockDetailed }) {
             <span className="shrink-0 font-mono text-xs text-slate-500">{stock.stock_id}</span>
           </Link>
           <button
-            onClick={() => toggle(stock.stock_id)}
-            title={starred ? '移除自選' : '加入自選'}
+            onClick={() => { if (loggedIn) toggle(stock.stock_id); else router.push('/login'); }}
+            title={loggedIn ? (starred ? '移除自選' : '加入自選') : '登入後加入自選'}
             className={`shrink-0 transition-colors ${starred ? 'text-amber-400' : 'text-slate-600 hover:text-amber-400'}`}
           >
             <Star className="h-4 w-4" fill={starred ? 'currentColor' : 'none'} />

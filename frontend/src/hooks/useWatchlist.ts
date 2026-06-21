@@ -1,52 +1,57 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { watchlistAPI } from '@/lib/api';
+import { useAuth } from './useAuth';
 
-const KEY = 'watchlist';
 const EVENT = 'watchlist-change';
 
-function read(): string[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const v = JSON.parse(localStorage.getItem(KEY) || '[]');
-    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
 /**
- * Browser-local watchlist (no login system). Persists to localStorage and
- * keeps every mounted star button in sync via a custom event.
+ * Per-user watchlist stored in the database (requires login).
+ * When not logged in, the list is empty and `toggle` returns false so callers
+ * can redirect to the login page.
  */
 export function useWatchlist() {
+  const { token, loggedIn } = useAuth();
   const [ids, setIds] = useState<string[]>([]);
 
+  const refresh = useCallback(async () => {
+    if (!token) {
+      setIds([]);
+      return;
+    }
+    try {
+      setIds(await watchlistAPI.get());
+    } catch {
+      setIds([]);
+    }
+  }, [token]);
+
   useEffect(() => {
-    setIds(read());
-    const sync = () => setIds(read());
-    window.addEventListener('storage', sync);
+    refresh();
+    const sync = () => refresh();
     window.addEventListener(EVENT, sync);
-    return () => {
-      window.removeEventListener('storage', sync);
-      window.removeEventListener(EVENT, sync);
-    };
-  }, []);
+    return () => window.removeEventListener(EVENT, sync);
+  }, [refresh]);
 
   const has = useCallback((id: string) => ids.includes(id), [ids]);
 
-  const toggle = useCallback((id: string) => {
-    const cur = read();
-    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
-    localStorage.setItem(KEY, JSON.stringify(next));
-    window.dispatchEvent(new Event(EVENT));
-  }, []);
+  const toggle = useCallback(
+    async (id: string): Promise<boolean> => {
+      if (!token) return false; // caller should redirect to /login
+      const isIn = ids.includes(id);
+      setIds((prev) => (isIn ? prev.filter((x) => x !== id) : [...prev, id])); // optimistic
+      try {
+        if (isIn) await watchlistAPI.remove(id);
+        else await watchlistAPI.add(id);
+      } catch {
+        refresh(); // revert on failure
+      }
+      window.dispatchEvent(new Event(EVENT));
+      return true;
+    },
+    [token, ids, refresh],
+  );
 
-  const remove = useCallback((id: string) => {
-    const next = read().filter((x) => x !== id);
-    localStorage.setItem(KEY, JSON.stringify(next));
-    window.dispatchEvent(new Event(EVENT));
-  }, []);
-
-  return { ids, has, toggle, remove };
+  return { ids, has, toggle, loggedIn, refresh };
 }
