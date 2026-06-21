@@ -28,7 +28,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { label: '首頁', href: '/', icon: Home, ready: true },
   { label: '市場新聞', href: '/news', icon: PieChart, ready: true },
-  { label: '自選股', href: '#', icon: Star, ready: false },
+  { label: '自選股', href: '/watchlist', icon: Star, ready: true },
   { label: '市場總覽', href: '#', icon: LineChart, ready: false },
   { label: '策略回測', href: '#', icon: LineChart, ready: false },
   { label: 'AI 選股', href: '#', icon: Sparkles, ready: false },

@@ -39,6 +39,7 @@ export const stockAPI = {
   getPrices: (id: string, days = 60) => fetchAPI<StockPrice[]>(`/api/v1/stocks/${id}/prices?days=${days}`),
   getHot: () => fetchAPI<StockSearchResult[]>(`/api/v1/stocks/hot`),
   getHotDetailed: (limit = 8) => fetchAPI<HotStockDetailed[]>(`/api/v1/stocks/hot-detailed?limit=${limit}`),
+  getBatch: (ids: string[]) => fetchAPI<HotStockDetailed[]>(`/api/v1/stocks/batch?ids=${encodeURIComponent(ids.join(','))}`),
 };
 
 // News APIs

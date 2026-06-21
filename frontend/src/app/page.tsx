@@ -8,21 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { NewsCard } from '@/components/news/NewsCard';
-import { Sparkline } from '@/components/common/Sparkline';
+import { StockQuoteCard } from '@/components/stock/StockQuoteCard';
 import { useMarketNews } from '@/hooks/useNews';
 import { useStockSearch, useHotStocksDetailed } from '@/hooks/useStock';
-import { changeTextClass } from '@/lib/marketColors';
 import type { HotStockDetailed } from '@/lib/types';
-
-function hotSignalLabel(signal: string | null): { label: string; cls: string } | null {
-  if (!signal) return null;
-  // Taiwan convention: 買進/看多 = red, 賣出/看空 = green.
-  if (signal === 'strong_buy' || signal === 'buy' || signal === 'bullish')
-    return { label: '買進', cls: 'bg-red-500/15 text-red-400 border-red-500/30' };
-  if (signal === 'sell' || signal === 'strong_sell' || signal === 'bearish')
-    return { label: '賣出', cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' };
-  return { label: '中性', cls: 'bg-slate-500/15 text-slate-400 border-slate-600/40' };
-}
 
 export default function HomePage() {
   const router = useRouter();
@@ -149,36 +138,9 @@ export default function HomePage() {
             </div>
           ) : hotStocks && hotStocks.length > 0 ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {hotStocks.map((stock: HotStockDetailed) => {
-                const up = stock.change >= 0;
-                const sig = hotSignalLabel(stock.signal);
-                return (
-                  <Link key={stock.stock_id} href={`/stock?id=${stock.stock_id}`}>
-                    <Card className="cursor-pointer border-slate-800 bg-slate-900 transition-colors hover:border-emerald-500/40 hover:bg-slate-800/80">
-                      <CardContent className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm font-medium text-white">{stock.name}</span>
-                          <span className="shrink-0 font-mono text-xs text-slate-500">{stock.stock_id}</span>
-                        </div>
-                        <div>
-                          <div className="text-xl font-bold text-white">
-                            {stock.close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </div>
-                          <div className={`text-xs font-medium ${changeTextClass(stock.change)}`}>
-                            {up ? '+' : ''}{stock.change.toFixed(2)} ({up ? '+' : ''}{stock.change_percent.toFixed(2)}%)
-                          </div>
-                        </div>
-                        <Sparkline values={stock.sparkline} up={up} className="h-9 w-full" />
-                        {sig && (
-                          <span className={`inline-block rounded-md border px-2 py-0.5 text-xs font-medium ${sig.cls}`}>
-                            {sig.label}
-                          </span>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Link>
-                );
-              })}
+              {hotStocks.map((stock: HotStockDetailed) => (
+                <StockQuoteCard key={stock.stock_id} stock={stock} />
+              ))}
             </div>
           ) : (
             <p className="text-sm text-slate-500">暫無熱門股票資料</p>
