@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import stocks, news, sentiment, analysis, health, technical, institutional, fundamental, macro
+from app.routers import stocks, news, sentiment, analysis, health, technical, institutional, fundamental, macro, auth, watchlist
 
 
 @asynccontextmanager
@@ -50,3 +50,5 @@ app.include_router(technical.router, prefix="/api/v1/technical", tags=["Technica
 app.include_router(institutional.router, prefix="/api/v1/institutional", tags=["Institutional"])
 app.include_router(fundamental.router, prefix="/api/v1/fundamental", tags=["Fundamental"])
 app.include_router(macro.router, prefix="/api/v1/macro", tags=["Macro"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
+app.include_router(watchlist.router, prefix="/api/v1/watchlist", tags=["Watchlist"])

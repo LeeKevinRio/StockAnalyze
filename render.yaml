@@ -22,6 +22,9 @@ services:
         fromDatabase:
           name: stockanalyze-db
           property: connectionString
+      # Auth — Render generates a secure random secret for signing JWTs.
+      - key: JWT_SECRET
+        generateValue: true
       # Secrets — enter these in the Render dashboard (sync:false = not in git).
       - key: GEMINI_API_KEY
         sync: false

@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     FINMIND_TOKEN: Optional[str] = None
     FRED_API_KEY: Optional[str] = None
 
+    # Auth / JWT
+    JWT_SECRET: str = "dev-insecure-change-me"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60 * 24 * 30  # 30 days
+
     # LLM Settings
     LLM_DEFAULT_TEMPERATURE: float = 0.3
     LLM_MAX_RETRIES: int = 2
