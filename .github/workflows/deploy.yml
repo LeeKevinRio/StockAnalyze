@@ -39,6 +39,8 @@ jobs:
           GITHUB_PAGES: 'true'
           # Hardcoded to the Render backend so no repo variable is needed.
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'https://stockanalyze-api.onrender.com' }}
+          # Google OAuth client ID (public — not a secret).
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: '866981925343-hmb7lsgcedtajnsoo1apc3tmc0nu84fm.apps.googleusercontent.com'
         run: npx next build
 
       - name: Add .nojekyll
