@@ -57,6 +57,8 @@ export const authAPI = {
     fetchAPI<AuthToken>(`/api/v1/auth/register`, { method: 'POST', body: JSON.stringify({ email, password }) }),
   login: (email: string, password: string) =>
     fetchAPI<AuthToken>(`/api/v1/auth/login`, { method: 'POST', body: JSON.stringify({ email, password }) }),
+  google: (credential: string) =>
+    fetchAPI<AuthToken>(`/api/v1/auth/google`, { method: 'POST', body: JSON.stringify({ credential }) }),
   me: () => fetchAPI<{ id: number; email: string }>(`/api/v1/auth/me`),
 };
 

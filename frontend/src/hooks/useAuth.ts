@@ -46,11 +46,16 @@ export function useAuth() {
     save(r.access_token, r.email);
   }, []);
 
+  const loginWithGoogle = useCallback(async (credential: string) => {
+    const r = await authAPI.google(credential);
+    save(r.access_token, r.email);
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(EMAIL_KEY);
     emit();
   }, []);
 
-  return { token, email, loggedIn: !!token, login, register, logout };
+  return { token, email, loggedIn: !!token, login, register, loginWithGoogle, logout };
 }

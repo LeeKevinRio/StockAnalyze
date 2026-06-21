@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "dev-insecure-change-me"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60 * 24 * 30  # 30 days
+    GOOGLE_CLIENT_ID: str = ""  # OAuth client ID for "Sign in with Google"
 
     # LLM Settings
     LLM_DEFAULT_TEMPERATURE: float = 0.3

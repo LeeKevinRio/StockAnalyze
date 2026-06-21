@@ -6,10 +6,11 @@ import { LogIn, UserPlus, TrendingUp } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
+import { GoogleSignInButton, GOOGLE_ENABLED } from '@/components/layout/GoogleSignInButton';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, register, loggedIn } = useAuth();
+  const { login, register, loginWithGoogle, loggedIn } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -48,6 +49,26 @@ export default function LoginPage() {
 
         <Card className="border-slate-800 bg-slate-900">
           <CardContent className="pt-6">
+            {/* Google sign-in (shows only when configured) */}
+            {GOOGLE_ENABLED && (
+              <div className="mb-5">
+                <GoogleSignInButton
+                  onCredential={async (credential) => {
+                    setError(null);
+                    try {
+                      await loginWithGoogle(credential);
+                      router.replace('/watchlist');
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Google 登入失敗');
+                    }
+                  }}
+                />
+                <div className="my-4 flex items-center gap-3 text-xs text-slate-500">
+                  <div className="h-px flex-1 bg-slate-800" /> 或 <div className="h-px flex-1 bg-slate-800" />
+                </div>
+              </div>
+            )}
+
             {/* Tabs */}
             <div className="mb-5 grid grid-cols-2 gap-1 rounded-lg bg-slate-800 p-1">
               {(['login', 'register'] as const).map((m) => (
