@@ -7,6 +7,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.news import StockNews
 from app.models.social import SocialPost, StockSentiment
 from app.models.stock import Stock
 from app.schemas.sentiment import (
@@ -24,34 +25,55 @@ async def get_stock_sentiment(
     stock_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get latest sentiment summary for a stock."""
+    """Latest sentiment summary, computed live from stored news + social posts.
+
+    (The pre-aggregated stock_sentiments table isn't populated, so we average
+    the per-article / per-post sentiment scores on the fly.)
+    """
     today = date.today()
-    query = (
-        select(StockSentiment)
-        .where(
-            StockSentiment.stock_id == stock_id,
-            StockSentiment.date >= today - timedelta(days=7),
+
+    # --- News sentiment (recent articles, which already carry a score) ---
+    news_rows = (
+        await db.execute(
+            select(StockNews.sentiment, StockNews.sentiment_score)
+            .where(StockNews.stock_id == stock_id, StockNews.sentiment_score.isnot(None))
+            .order_by(StockNews.published_at.desc().nullslast())
+            .limit(100)
         )
-        .order_by(StockSentiment.date.desc())
-    )
-    result = await db.execute(query)
-    sentiments = result.scalars().all()
+    ).all()
+    news_scores = [float(s) for (_lbl, s) in news_rows if s is not None]
+    news_sentiment = round(sum(news_scores) / len(news_scores), 3) if news_scores else None
+    news_count = len(news_rows)
 
-    news_sentiment = None
+    # --- Social sentiment (best-effort; posts mentioning this stock) ---
     social_sentiment = None
-    combined_sentiment = None
-    mention_count = 0
-    heat_level = "cold"
+    social_count = 0
+    try:
+        soc = (
+            await db.execute(
+                select(SocialPost.sentiment_score)
+                .where(
+                    SocialPost.sentiment_score.isnot(None),
+                    SocialPost.mentioned_stocks.contains([stock_id]),
+                )
+                .limit(300)
+            )
+        ).scalars().all()
+        ss = [float(x) for x in soc if x is not None]
+        if ss:
+            social_sentiment = round(sum(ss) / len(ss), 3)
+            social_count = len(ss)
+    except Exception:
+        pass
 
-    for s in sentiments:
-        if s.source_type == "news" and news_sentiment is None:
-            news_sentiment = s.sentiment_score
-        elif s.source_type == "social" and social_sentiment is None:
-            social_sentiment = s.sentiment_score
-        elif s.source_type == "combined" and combined_sentiment is None:
-            combined_sentiment = s.sentiment_score
-            mention_count = s.mention_count
-            heat_level = s.heat_level or "cold"
+    # --- Combined (news 0.6 / social 0.4) ---
+    if news_sentiment is not None and social_sentiment is not None:
+        combined_sentiment = round(news_sentiment * 0.6 + social_sentiment * 0.4, 3)
+    else:
+        combined_sentiment = news_sentiment if news_sentiment is not None else social_sentiment
+
+    mention_count = news_count + social_count
+    heat_level = "hot" if mention_count >= 50 else "warm" if mention_count >= 15 else "cold"
 
     return SentimentSummary(
         stock_id=stock_id,
