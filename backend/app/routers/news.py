@@ -18,6 +18,20 @@ async def get_market_news(
     db: AsyncSession = Depends(get_db),
 ):
     """Get market-wide news."""
+    # Refresh the pool from a few popular stocks if the latest fetch is stale.
+    last_fetch = (await db.execute(select(func.max(StockNews.fetched_at)))).scalar_one_or_none()
+    if last_fetch is None or (datetime.now(timezone.utc) - last_fetch) > timedelta(hours=6):
+        from app.models.stock import Stock
+        from app.services.news_service import fetch_and_store_news
+        for sid in ("2330", "2317", "2454"):
+            stock = (await db.execute(select(Stock).where(Stock.stock_id == sid))).scalar_one_or_none()
+            if stock:
+                try:
+                    await fetch_and_store_news(sid, stock.name, db)
+                except Exception:
+                    pass
+        await db.commit()
+
     query = (
         select(StockNews)
         .order_by(StockNews.published_at.desc())
@@ -45,8 +59,13 @@ async def get_stock_news(
     result = await db.execute(_query())
     rows = result.scalars().all()
 
-    # On-demand: fetch news (with sentiment) the first time a stock is viewed.
-    if not rows:
+    # On-demand: fetch news on first view OR when the last fetch is stale (>6h),
+    # so 消息面 stays current. fetch_and_store_news dedups by title.
+    last_fetch = (
+        await db.execute(select(func.max(StockNews.fetched_at)).where(StockNews.stock_id == stock_id))
+    ).scalar_one_or_none()
+    stale = last_fetch is None or (datetime.now(timezone.utc) - last_fetch) > timedelta(hours=6)
+    if stale:
         from app.models.stock import Stock
         from app.services.news_service import fetch_and_store_news
         stock = (await db.execute(select(Stock).where(Stock.stock_id == stock_id))).scalar_one_or_none()
