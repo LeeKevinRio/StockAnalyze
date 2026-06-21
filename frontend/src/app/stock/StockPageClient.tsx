@@ -153,6 +153,13 @@ export default function StockPageClient({ stockId }: StockPageClientProps) {
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
 
+  // Transient toast for header actions (copy link, alerts placeholder)
+  const [notice, setNotice] = useState<string | null>(null);
+  function flash(msg: string) {
+    setNotice(msg);
+    setTimeout(() => setNotice((cur) => (cur === msg ? null : cur)), 2000);
+  }
+
   async function handleGenerate() {
     setGenerating(true);
     setGenError(null);
@@ -262,18 +269,35 @@ export default function StockPageClient({ stockId }: StockPageClientProps) {
             </div>
 
             {/* Right: action buttons + overall signal badge */}
-            <div className="flex flex-col items-start gap-3 lg:items-end">
+            <div className="flex flex-col items-start gap-2 lg:items-end">
               <div className="flex items-center gap-2">
-                <button className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-sm text-slate-300 transition-colors hover:bg-slate-800" title="敬請期待">
+                <button
+                  onClick={() => flash('提醒功能即將推出')}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-sm text-slate-300 transition-colors hover:bg-slate-800"
+                  title="設定提醒（即將推出）"
+                >
                   <Bell className="h-4 w-4" /> 設定提醒
                 </button>
-                <button className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-sm text-slate-300 transition-colors hover:bg-slate-800" title="敬請期待">
-                  <Plus className="h-4 w-4" /> 自選
+                <button
+                  onClick={() => { if (loggedIn) toggleWatchlist(stockId); else router.push('/login'); }}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors ${inWatchlist(stockId) ? 'border-amber-500/40 bg-amber-500/10 text-amber-400' : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:bg-slate-800'}`}
+                  title={loggedIn ? (inWatchlist(stockId) ? '從自選移除' : '加入自選') : '登入後加入自選'}
+                >
+                  {inWatchlist(stockId) ? <Star className="h-4 w-4" fill="currentColor" /> : <Plus className="h-4 w-4" />}
+                  {inWatchlist(stockId) ? '已自選' : '自選'}
                 </button>
-                <button className="inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-800/60 p-2 text-slate-300 transition-colors hover:bg-slate-800" title="敬請期待">
+                <button
+                  onClick={async () => {
+                    try { await navigator.clipboard.writeText(window.location.href); flash('已複製連結'); }
+                    catch { flash('複製失敗'); }
+                  }}
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-800/60 p-2 text-slate-300 transition-colors hover:bg-slate-800"
+                  title="複製連結"
+                >
                   <Share2 className="h-4 w-4" />
                 </button>
               </div>
+              {notice && <span className="text-xs text-emerald-400">{notice}</span>}
               {scores && (() => {
                 const s = signalDisplay(scores.overall_signal);
                 return (
