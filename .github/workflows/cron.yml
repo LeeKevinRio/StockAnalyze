@@ -1,0 +1,51 @@
+# Scheduled jobs for the free-tier deployment:
+# 1. Keep-warm: ping /health during Taiwan trading hours so the Render free
+#    instance (which sleeps after 15 min idle) stays awake when users care.
+# 2. Daily refresh: after market close, trigger the screener refresh which
+#    tops up prices / fundamentals / institutional data and recomputes the
+#    five-dimension scores for the curated universe.
+name: Keep-warm & daily data refresh
+
+on:
+  schedule:
+    # Every 10 min, 08:30-14:00 Taipei (00:30-06:00 UTC), weekdays — keep-warm.
+    - cron: '*/10 0-5 * * 1-5'
+    # 14:40 Taipei (06:40 UTC), weekdays — post-close data refresh.
+    - cron: '40 6 * * 1-5'
+  workflow_dispatch: {}
+
+env:
+  API: https://stockanalyze-api.onrender.com
+
+jobs:
+  keep-warm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health (wakes the server if asleep)
+        run: |
+          for i in 1 2 3 4; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 90 "$API/health" || echo 000)
+            echo "attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          echo "backend did not wake up" && exit 1
+
+  daily-refresh:
+    # Only on the post-close schedule (or manual run).
+    if: github.event.schedule == '40 6 * * 1-5' || github.event_name == 'workflow_dispatch'
+    needs: keep-warm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh screener universe (prices + fundamentals + chips + scores)
+        run: |
+          # The endpoint commits per stock, so even if one attempt times out,
+          # progress is kept and the retry finishes the remainder.
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 540 -X POST \
+              "$API/api/v1/analysis/screener/refresh?limit=5" || echo 000)
+            echo "attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 30
+          done
+          echo "refresh did not complete after retries" && exit 1

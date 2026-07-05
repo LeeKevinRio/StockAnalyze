@@ -1,15 +1,24 @@
 """Stock-related API endpoints."""
 
+import asyncio
+import logging
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.database import async_session_factory, get_db
 from app.models.analysis import AnalysisReport
 from app.models.stock import Stock, StockPrice
 from app.schemas.stock import StockResponse, StockPriceResponse, StockDetailResponse, StockSearchResult
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+# Bound concurrent quote builds: enough to hide FinMind latency without
+# exhausting the DB pool or hammering the free-tier API.
+_QUOTE_CONCURRENCY = 5
 
 
 @router.get("/search", response_model=list[StockSearchResult])
@@ -89,15 +98,40 @@ async def _build_quote(sid: str, db: AsyncSession) -> dict | None:
     }
 
 
+async def _build_quotes_parallel(ids: list[str]) -> list[dict]:
+    """Build quote cards concurrently, one DB session per stock.
+
+    A shared AsyncSession cannot be used from concurrent tasks, so each task
+    opens its own session. Concurrency is bounded by a semaphore. Failures
+    are logged and skipped rather than failing the whole batch. Preserves
+    input order.
+    """
+    sem = asyncio.Semaphore(_QUOTE_CONCURRENCY)
+
+    async def one(sid: str) -> dict | None:
+        async with sem:
+            async with async_session_factory() as session:
+                try:
+                    q = await _build_quote(sid, session)
+                    await session.commit()
+                    return q
+                except Exception:
+                    await session.rollback()
+                    logger.exception("Quote build failed for %s", sid)
+                    return None
+
+    results = await asyncio.gather(*(one(sid) for sid in ids))
+    return [q for q in results if q]
+
+
 @router.get("/hot-detailed")
 async def get_hot_detailed(
     limit: int = Query(12, ge=1, le=50),
-    db: AsyncSession = Depends(get_db),
 ):
     """Hot stocks with latest price, change, sparkline and analysis signal."""
     # Curated popular list — bounded + relevant, kept fresh on each load.
     ids = ["2330", "2317", "2454", "2308", "2882", "2603", "2881", "2412"]
-    out = [q for q in [await _build_quote(sid, db) for sid in ids] if q]
+    out = await _build_quotes_parallel(ids)
     out.sort(key=lambda x: abs(x["change_percent"]), reverse=True)
     return out[:limit]
 
@@ -105,19 +139,13 @@ async def get_hot_detailed(
 @router.get("/batch")
 async def get_batch_quotes(
     ids: str = Query(..., description="Comma-separated stock IDs, e.g. 2330,2317"),
-    db: AsyncSession = Depends(get_db),
 ):
     """Quote cards for an arbitrary set of stocks (e.g. a watchlist).
 
     Preserves input order. Each stock self-backfills if it has no data yet.
     """
     id_list = [s.strip() for s in ids.split(",") if s.strip()][:50]
-    out = []
-    for sid in id_list:
-        q = await _build_quote(sid, db)
-        if q:
-            out.append(q)
-    return out
+    return await _build_quotes_parallel(id_list)
 
 
 @router.get("/{stock_id}", response_model=StockDetailResponse)

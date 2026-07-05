@@ -3,9 +3,12 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, Date, DateTime, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+
+# JSONB on Postgres, plain JSON elsewhere (e.g. SQLite in tests).
+PortableJSON = JSON().with_variant(JSONB(), "postgresql")
 
 from app.database import Base
 
@@ -35,7 +38,7 @@ class AnalysisReport(Base):
     macro_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 1))
 
     # Detailed breakdown
-    dimension_details: Mapped[dict | None] = mapped_column(JSONB)
+    dimension_details: Mapped[dict | None] = mapped_column(PortableJSON)
 
     # AI report
     ai_report_markdown: Mapped[str | None] = mapped_column(Text)

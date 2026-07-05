@@ -48,6 +48,7 @@ import { FinancialTable } from '@/components/fundamental/FinancialTable';
 import { RevenueChart } from '@/components/fundamental/RevenueChart';
 import { ValuationMetrics } from '@/components/fundamental/ValuationMetrics';
 import { useStockDetail, useStockPrices } from '@/hooks/useStock';
+import { getChartDays } from '@/lib/prefs';
 import { useStockNews } from '@/hooks/useNews';
 import {
   useAnalysisScores,
@@ -176,8 +177,8 @@ export default function StockPageClient({ stockId }: StockPageClientProps) {
   const { data: sentimentSummary } = useSentimentSummary(stockId);
   const { data: socialPosts } = useSocialPosts(stockId);
 
-  // Technical data
-  const { data: stockPrices, isLoading: pricesLoading } = useStockPrices(stockId, 120);
+  // Technical data — chart range follows the user's saved preference.
+  const { data: stockPrices, isLoading: pricesLoading } = useStockPrices(stockId, getChartDays());
   const { data: technicalData, isLoading: technicalLoading } = useTechnicalIndicators(stockId);
 
   // Institutional data

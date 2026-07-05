@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { ColdStartNotice } from "@/components/layout/ColdStartNotice";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,7 +31,8 @@ export default function RootLayout({
     >
       <body className="min-h-full bg-background text-foreground">
         <Sidebar />
-        <main className="ml-60 min-h-screen">{children}</main>
+        <ColdStartNotice />
+        <main className="min-h-screen pt-14 md:ml-60 md:pt-0">{children}</main>
       </body>
     </html>
   );

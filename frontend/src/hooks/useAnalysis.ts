@@ -1,5 +1,5 @@
 import useSWR from 'swr';
-import { analysisAPI, sentimentAPI } from '@/lib/api';
+import { analysisAPI, macroAPI, sentimentAPI, type ScreenerParams } from '@/lib/api';
 
 export function useAnalysisScores(stockId: string | null) {
   return useSWR(
@@ -31,4 +31,13 @@ export function useSocialPosts(stockId: string | null) {
 
 export function useHotStocks() {
   return useSWR('/sentiment/hot-stocks', () => sentimentAPI.getHotStocks());
+}
+
+export function useScreener(params: ScreenerParams) {
+  const key = `/analysis/screener/${params.signal ?? 'all'}/${params.sort ?? 'overall'}/${params.limit ?? 20}`;
+  return useSWR(key, () => analysisAPI.screen(params), { revalidateOnFocus: false });
+}
+
+export function useMacroDashboard() {
+  return useSWR('/macro/dashboard', () => macroAPI.getDashboard(), { revalidateOnFocus: false });
 }

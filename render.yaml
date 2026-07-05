@@ -33,6 +33,11 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      # Optional but recommended: FinMind API token (free signup at
+      # finmindtrade.com) — without it, data fetches share the tiny
+      # anonymous-tier quota and randomly come back empty.
+      - key: FINMIND_TOKEN
+        sync: false
 
 databases:
   - name: stockanalyze-db

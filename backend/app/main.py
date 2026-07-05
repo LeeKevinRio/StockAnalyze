@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,6 +9,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db
 from app.routers import stocks, news, sentiment, analysis, health, technical, institutional, fundamental, macro, auth, watchlist
+
+# Make app.* INFO logs visible in production (uvicorn only configures its own
+# loggers; without this the root logger stays at WARNING and swallows them).
+logging.basicConfig(
+    level=logging.DEBUG if settings.APP_DEBUG else logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
+logger = logging.getLogger(__name__)
+
+# Refuse to serve auth with the known default secret outside development —
+# anyone reading the repo could forge login tokens.
+if settings.JWT_SECRET == "dev-insecure-change-me" and not settings.is_development:
+    raise RuntimeError(
+        "JWT_SECRET is still the insecure default. Set the JWT_SECRET "
+        "environment variable (Render: generateValue in render.yaml)."
+    )
 
 
 @asynccontextmanager
@@ -18,8 +36,7 @@ async def lifespan(app: FastAPI):
         await init_db()
     except Exception:
         # Don't crash the app if the DB is briefly unavailable at boot.
-        import logging
-        logging.getLogger(__name__).exception("init_db failed at startup")
+        logger.exception("init_db failed at startup")
     yield
     # Shutdown
 

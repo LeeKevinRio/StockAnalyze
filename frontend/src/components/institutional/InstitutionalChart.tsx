@@ -31,10 +31,21 @@ function formatDateShort(dateStr: string) {
   return dateStr;
 }
 
+// Raw values come from FinMind in 股 (shares); display as 張 (1 張 = 1000 股).
+function toLots(value: number) {
+  return value / 1000;
+}
+
+function formatAxis(value: number) {
+  const lots = toLots(value);
+  if (Math.abs(lots) >= 1e4) return `${(lots / 1e4).toFixed(1)}萬`;
+  return Math.round(lots).toLocaleString();
+}
+
 function formatNumber(value: number) {
-  if (Math.abs(value) >= 1e8) return `${(value / 1e8).toFixed(1)}億`;
-  if (Math.abs(value) >= 1e4) return `${(value / 1e4).toFixed(0)}萬`;
-  return value.toLocaleString();
+  const lots = toLots(value);
+  if (Math.abs(lots) >= 1e4) return `${(lots / 1e4).toFixed(1)}萬張`;
+  return `${Math.round(lots).toLocaleString()} 張`;
 }
 
 const tooltipStyle = {
@@ -70,7 +81,7 @@ export function InstitutionalChart({ data }: InstitutionalChartProps) {
             axisLine={{ stroke: '#334155' }}
           />
           <YAxis
-            tickFormatter={formatNumber}
+            tickFormatter={formatAxis}
             tick={{ fill: '#64748b', fontSize: 10 }}
             axisLine={{ stroke: '#334155' }}
             width={60}

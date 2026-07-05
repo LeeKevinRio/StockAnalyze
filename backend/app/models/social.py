@@ -13,10 +13,10 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.analysis import PortableJSON
 
 
 class SocialPost(Base):
@@ -31,7 +31,7 @@ class SocialPost(Base):
     content: Mapped[str | None] = mapped_column(Text)
     author: Mapped[str | None] = mapped_column(String(100))
     url: Mapped[str | None] = mapped_column(String(1000))
-    mentioned_stocks: Mapped[dict | None] = mapped_column(JSONB, default=list)
+    mentioned_stocks: Mapped[dict | None] = mapped_column(PortableJSON, default=list)
     sentiment: Mapped[str | None] = mapped_column(String(20))
     sentiment_score: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     push_count: Mapped[int] = mapped_column(Integer, default=0)

@@ -11,9 +11,26 @@ import type {
   HotStockDetailed,
   AnalysisScores,
   AnalysisReport,
+  ScreenerPick,
+  MacroDashboard,
 } from './types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export interface ScreenerParams {
+  limit?: number;
+  signal?: string;
+  sort?: string;
+}
+
+function screenerQuery(p: ScreenerParams = {}): string {
+  const qs = new URLSearchParams();
+  if (p.limit) qs.set('limit', String(p.limit));
+  if (p.signal && p.signal !== 'all') qs.set('signal', p.signal);
+  if (p.sort) qs.set('sort', p.sort);
+  const s = qs.toString();
+  return s ? `?${s}` : '';
+}
+
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -99,4 +116,17 @@ export const analysisAPI = {
   getScores: (id: string) => fetchAPI<AnalysisScores>(`/api/v1/analysis/${id}/scores`),
   getReport: (id: string) => fetchAPI<AnalysisReport>(`/api/v1/analysis/${id}/report`),
   refresh: (id: string) => fetchAPI<AnalysisReport>(`/api/v1/analysis/${id}/refresh`, { method: 'POST' }),
+  screen: (p: ScreenerParams = {}) => fetchAPI<ScreenerPick[]>(`/api/v1/analysis/screener${screenerQuery(p)}`),
+  refreshScreener: (p: ScreenerParams = {}) =>
+    fetchAPI<ScreenerPick[]>(`/api/v1/analysis/screener/refresh${screenerQuery(p)}`, { method: 'POST' }),
+};
+
+// Macro APIs
+export const macroAPI = {
+  getDashboard: () => fetchAPI<MacroDashboard>(`/api/v1/macro/dashboard`),
+};
+
+// Health
+export const healthAPI = {
+  check: () => fetchAPI<{ status: string; service: string }>(`/health`),
 };

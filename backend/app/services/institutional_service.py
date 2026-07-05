@@ -353,25 +353,30 @@ class InstitutionalService:
 
         parts = [f"【籌碼評分 {score:+.0f}】{overall}。"]
 
-        # Foreign investor
-        if institutional.foreign_trend == "buying":
+        # Foreign investor — wording is driven by the actual cumulative sign so
+        # the text never contradicts the number (the trend may be classified
+        # "buying" on a 2-of-3 majority even when the 20d total is still net sold).
+        if institutional.foreign_trend == "buying" or institutional.foreign_trend == "selling":
             streak = ""
             if institutional.foreign_consecutive_days > 0:
                 streak = f"，已連續買超 {institutional.foreign_consecutive_days} 日"
-            parts.append(f"外資近期持續買超{streak}，20日累計淨買 {institutional.cumulative_foreign_20d:,} 張。")
-        elif institutional.foreign_trend == "selling":
-            streak = ""
-            if institutional.foreign_consecutive_days < 0:
+            elif institutional.foreign_consecutive_days < 0:
                 streak = f"，已連續賣超 {abs(institutional.foreign_consecutive_days)} 日"
-            parts.append(f"外資近期持續賣超{streak}，20日累計淨賣 {abs(institutional.cumulative_foreign_20d):,} 張。")
+            net = institutional.cumulative_foreign_20d
+            if net >= 0:
+                parts.append(f"外資近期偏多{streak}，20日累計淨買 {self._lots(net)} 張。")
+            else:
+                parts.append(f"外資近期偏空{streak}，20日累計淨賣 {self._lots(net)} 張。")
         else:
             parts.append("外資近期買賣態度中立。")
 
         # Trust
-        if institutional.trust_trend == "buying":
-            parts.append(f"投信持續加碼，20日累計淨買 {institutional.cumulative_trust_20d:,} 張。")
-        elif institutional.trust_trend == "selling":
-            parts.append(f"投信持續減碼，20日累計淨賣 {abs(institutional.cumulative_trust_20d):,} 張。")
+        if institutional.trust_trend == "buying" or institutional.trust_trend == "selling":
+            net = institutional.cumulative_trust_20d
+            if net >= 0:
+                parts.append(f"投信偏多加碼，20日累計淨買 {self._lots(net)} 張。")
+            else:
+                parts.append(f"投信偏空減碼，20日累計淨賣 {self._lots(net)} 張。")
 
         # Margin
         if margin.margin_trend == "increasing" and margin.margin_balance_change_pct > 10:
@@ -387,6 +392,15 @@ class InstitutionalService:
     # ==================================================================
     # Private helpers
     # ==================================================================
+
+    @staticmethod
+    def _lots(shares: int) -> str:
+        """Format a raw share count (股, from FinMind) as 張 (1 張 = 1000 股).
+
+        Returns the absolute value with thousands separators; the buy/sell
+        wording carries the sign so the number is always shown positive.
+        """
+        return f"{round(abs(shares) / 1000):,}"
 
     @staticmethod
     def _consecutive_days(nets: list[int]) -> int:

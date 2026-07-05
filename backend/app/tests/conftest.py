@@ -73,3 +73,34 @@ async def db(async_session_factory) -> AsyncGenerator[AsyncSession, None]:
         finally:
             await session.rollback()
             await session.close()
+
+
+@pytest_asyncio.fixture
+async def client():
+    """Hermetic API test client backed by a fresh in-memory SQLite DB.
+
+    Overrides the app's ``get_db`` dependency so API tests never touch the
+    real (Postgres) engine. Function-scoped: engine and event loop live and
+    die with the individual test, avoiding pytest-asyncio cross-loop issues.
+    """
+    from httpx import ASGITransport, AsyncClient
+
+    from app.database import get_db
+    from app.main import app
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def _override() -> AsyncGenerator[AsyncSession, None]:
+        async with factory() as session:
+            yield session
+            await session.commit()
+
+    app.dependency_overrides[get_db] = _override
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    app.dependency_overrides.pop(get_db, None)
+    await engine.dispose()

@@ -221,7 +221,15 @@ async def ensure_institutional(stock_id: str, db: AsyncSession) -> int:
 
 
 async def _finmind(client, dataset, stock_id, start):
-    r = await client.get(FINMIND, params={"dataset": dataset, "data_id": stock_id, "start_date": start})
+    from app.config import settings
+
+    params = {"dataset": dataset, "data_id": stock_id, "start_date": start}
+    if settings.FINMIND_TOKEN:
+        params["token"] = settings.FINMIND_TOKEN
+    r = await client.get(FINMIND, params=params)
     r.raise_for_status()
     j = r.json()
-    return j.get("data", []) if j.get("msg") == "success" else []
+    if j.get("msg") != "success":
+        logger.warning("FinMind %s for %s returned: %s", dataset, stock_id, j.get("msg"))
+        return []
+    return j.get("data", [])

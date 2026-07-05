@@ -110,6 +110,49 @@ export interface AnalysisScores {
   dimensions: DimensionScore[];
 }
 
+export interface ScreenerPick {
+  stock_id: string;
+  name: string;
+  industry: string | null;
+  overall_score: number;
+  overall_signal: string;
+  confidence: number;
+  scores: {
+    news: number;
+    fundamental: number;
+    technical: number;
+    institutional: number;
+    macro: number;
+  };
+  target_price: number | null;
+  report_date: string | null;
+  close: number | null;
+  change_percent: number | null;
+}
+
+export interface MacroIndicatorItem {
+  name: string;
+  value: number | null;
+  previous_value: number | null;
+  change: number | null;
+  trend: string | null;
+  updated_at: string | null;
+}
+
+export interface MacroDashboard {
+  interest_rate: MacroIndicatorItem | null;
+  taiwan_rate: MacroIndicatorItem | null;
+  exchange_rate: MacroIndicatorItem | null;
+  taiex: MacroIndicatorItem | null;
+  vix: MacroIndicatorItem | null;
+  ten_year_treasury: MacroIndicatorItem | null;
+  business_cycle: string | null;
+  rate_cycle: string | null;
+  score: number;
+  summary: string | null;
+  updated_at: string | null;
+}
+
 export interface AnalysisReport {
   stock_id: string;
   stock_name: string;

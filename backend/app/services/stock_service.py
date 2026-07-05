@@ -204,21 +204,19 @@ async def ensure_price_history(
         else:
             start_date = max_date - timedelta(days=5)  # small overlap buffer
 
+        from app.services.ondemand import _finmind
+
         try:
             async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.get(
-                    "https://api.finmindtrade.com/api/v4/data",
-                    params={"dataset": "TaiwanStockPrice", "data_id": stock_id, "start_date": start_date.isoformat()},
-                )
-                resp.raise_for_status()
-                payload = resp.json()
+                rows = await _finmind(client, "TaiwanStockPrice", stock_id, start_date.isoformat())
         except Exception:
             logger.exception("FinMind price fetch failed for %s", stock_id)
             return 0
 
-        if payload.get("msg") != "success" or not payload.get("data"):
+        if not rows:
             logger.info("No FinMind price data for %s", stock_id)
             return 0
+        payload = {"data": rows}
 
         # Skip dates we already have.
         existing = set(

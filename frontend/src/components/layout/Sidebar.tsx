@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -17,6 +18,8 @@ import {
   LogIn,
   LogOut,
   UserCircle,
+  Menu,
+  X,
 } from 'lucide-react';
 import { SearchBar } from './SearchBar';
 import { MarketIndexWidget } from './MarketIndexWidget';
@@ -31,25 +34,57 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { label: '首頁', href: '/', icon: Home, ready: true },
+  { label: '市場總覽', href: '/market', icon: LineChart, ready: true },
+  { label: 'AI 選股', href: '/screener', icon: Sparkles, ready: true },
   { label: '市場新聞', href: '/news', icon: PieChart, ready: true },
   { label: '自選股', href: '/watchlist', icon: Star, ready: true },
-  { label: '市場總覽', href: '#', icon: LineChart, ready: false },
   { label: '策略回測', href: '#', icon: LineChart, ready: false },
-  { label: 'AI 選股', href: '#', icon: Sparkles, ready: false },
   { label: '投資組合', href: '#', icon: Briefcase, ready: false },
   { label: '報告中心', href: '#', icon: FileText, ready: false },
   { label: '通知中心', href: '#', icon: Bell, ready: false },
-  { label: '設定', href: '#', icon: Settings, ready: false },
+  { label: '設定', href: '/settings', icon: Settings, ready: true },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { loggedIn, email, logout } = useAuth();
+  const [open, setOpen] = useState(false);
+  const closeDrawer = () => setOpen(false);
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-60 flex-col border-r border-slate-800 bg-slate-900">
+    <>
+      {/* Mobile top bar (hamburger + logo) */}
+      <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-3 border-b border-slate-800 bg-slate-900 px-4 md:hidden">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? '關閉選單' : '開啟選單'}
+          className="text-slate-300 transition-colors hover:text-white"
+        >
+          {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+        </button>
+        <Link href="/" className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/15">
+            <TrendingUp className="h-4 w-4 text-emerald-400" />
+          </div>
+          <span className="text-sm font-bold text-white">股市智析</span>
+        </Link>
+      </header>
+
+      {/* Backdrop for the mobile drawer */}
+      {open && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 md:hidden"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`fixed left-0 top-0 z-50 flex h-screen w-60 flex-col border-r border-slate-800 bg-slate-900 transition-transform duration-200 md:z-40 md:translate-x-0 ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
       {/* Logo */}
-      <Link href="/" className="flex items-center gap-2 px-5 py-4">
+      <Link href="/" onClick={closeDrawer} className="flex items-center gap-2 px-5 py-4">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/15">
           <TrendingUp className="h-5 w-5 text-emerald-400" />
         </div>
@@ -89,6 +124,7 @@ export function Sidebar() {
               <li key={item.label}>
                 <Link
                   href={item.href}
+                  onClick={closeDrawer}
                   className={`${base} ${active ? 'bg-emerald-500/15 font-medium text-emerald-300' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
                 >
                   <Icon className="h-4 w-4" />
@@ -115,6 +151,7 @@ export function Sidebar() {
         ) : (
           <Link
             href="/login"
+            onClick={closeDrawer}
             className="flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-slate-800"
           >
             <LogIn className="h-4 w-4" /> 登入 / 註冊
@@ -136,6 +173,7 @@ export function Sidebar() {
           <span className="ml-auto h-4 w-4 rounded-full bg-white" />
         </span>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

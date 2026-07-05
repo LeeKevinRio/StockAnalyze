@@ -40,3 +40,21 @@ export function changeTextClass(v: number): string {
   if (v < 0) return 'text-emerald-400';
   return 'text-slate-400';
 }
+
+/** Localised label + badge classes for an overall/dimension signal. */
+export function signalMeta(signal: string | null | undefined): { label: string; cls: string } {
+  switch (signal) {
+    case 'strong_buy':
+      return { label: '強力買進', cls: 'bg-red-500/15 text-red-400 border-red-500/30' };
+    case 'buy':
+    case 'bullish':
+      return { label: '買進', cls: 'bg-red-500/10 text-red-300 border-red-500/25' };
+    case 'sell':
+    case 'bearish':
+      return { label: '賣出', cls: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25' };
+    case 'strong_sell':
+      return { label: '強力賣出', cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' };
+    default:
+      return { label: '中性', cls: 'bg-slate-500/15 text-slate-400 border-slate-600/40' };
+  }
+}
