@@ -10,9 +10,9 @@ from sqlalchemy.orm import DeclarativeBase
 from app.config import settings
 
 
-# Managed Postgres (e.g. Render external host) requires SSL; local/internal does not.
+# Managed Postgres (Render/Neon/Supabase) requires SSL; local/internal does not.
 _connect_args = {}
-if "render.com" in settings.async_database_url or "sslmode=require" in settings.async_database_url:
+if settings.database_ssl_required:
     _connect_args["ssl"] = "require"
 
 engine = create_async_engine(

@@ -43,13 +43,32 @@ class Settings(BaseSettings):
 
         Hosts like Railway/Heroku provide ``postgres://`` or ``postgresql://``;
         SQLAlchemy's async engine needs the ``postgresql+asyncpg://`` form.
+
+        Also strips libpq-only query params (``sslmode``, ``channel_binding``)
+        that managed hosts like Neon/Supabase append — asyncpg rejects them as
+        unknown keyword arguments. SSL is applied via ``database_ssl_required``
+        + connect_args instead.
         """
+        import re
+
         url = self.DATABASE_URL
         if url.startswith("postgres://"):
             url = "postgresql://" + url[len("postgres://"):]
         if url.startswith("postgresql://"):
             url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+        for param in ("sslmode", "channel_binding"):
+            url = re.sub(rf"[?&]{param}=[^&]*", "", url)
+        # Re-normalise a dangling '&' left when the first param was removed.
+        url = url.replace("?&", "?").rstrip("?")
         return url
+
+    @property
+    def database_ssl_required(self) -> bool:
+        """Whether the DB host requires TLS (managed hosts do; local doesn't)."""
+        raw = self.DATABASE_URL
+        return "sslmode=require" in raw or any(
+            host in raw for host in ("render.com", "neon.tech", "supabase.co", "supabase.com")
+        )
 
     @property
     def cors_origins_list(self) -> list[str]:
