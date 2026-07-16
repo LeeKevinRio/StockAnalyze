@@ -37,6 +37,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         # Don't crash the app if the DB is briefly unavailable at boot.
         logger.exception("init_db failed at startup")
+    # Self-heal the stock master list after a DB reset (free-tier DBs expire).
+    try:
+        from app.database import async_session_factory
+        from app.services.ondemand import ensure_stock_list
+
+        async with async_session_factory() as session:
+            await ensure_stock_list(session)
+    except Exception:
+        logger.exception("ensure_stock_list failed at startup")
     yield
     # Shutdown
 

@@ -15,7 +15,15 @@ async def test_health_check(client):
 
 
 @pytest.mark.asyncio
-async def test_stock_search_empty(client):
+async def test_stock_search_empty(client, monkeypatch):
+    # Empty search triggers the stock-list self-heal; stub it out so the
+    # test stays offline.
+    from app.services import ondemand
+
+    async def _no_seed(db):
+        return 0
+
+    monkeypatch.setattr(ondemand, "ensure_stock_list", _no_seed)
     response = await client.get("/api/v1/stocks/search?q=2330")
     assert response.status_code == 200
     assert response.json() == []

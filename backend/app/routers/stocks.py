@@ -37,6 +37,11 @@ async def search_stocks(
     )
     result = await db.execute(query)
     stocks = result.scalars().all()
+    if not stocks:
+        # Self-heal after a DB reset: seed the master list, then retry once.
+        from app.services.ondemand import ensure_stock_list
+        if await ensure_stock_list(db):
+            stocks = (await db.execute(query)).scalars().all()
     return stocks
 
 

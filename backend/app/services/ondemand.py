@@ -233,3 +233,73 @@ async def _finmind(client, dataset, stock_id, start):
         logger.warning("FinMind %s for %s returned: %s", dataset, stock_id, j.get("msg"))
         return []
     return j.get("data", [])
+
+
+# ---------------------------------------------------------------------------
+# Stock master list (FinMind TaiwanStockInfo)
+# ---------------------------------------------------------------------------
+
+_stock_list_lock = asyncio.Lock()
+
+
+async def ensure_stock_list(db: AsyncSession) -> int:
+    """Seed the stocks master table from FinMind if it is empty.
+
+    Makes the app self-healing after a database reset (free-tier DBs expire):
+    no manual seed script needed. No-op when the table already has rows.
+    """
+    from app.config import settings
+    from app.models.stock import Stock
+
+    exists = (await db.execute(select(Stock.stock_id).limit(1))).scalar_one_or_none()
+    if exists is not None:
+        return 0
+
+    async with _stock_list_lock:
+        exists = (await db.execute(select(Stock.stock_id).limit(1))).scalar_one_or_none()
+        if exists is not None:
+            return 0
+
+        params = {"dataset": "TaiwanStockInfo"}
+        if settings.FINMIND_TOKEN:
+            params["token"] = settings.FINMIND_TOKEN
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                r = await client.get(FINMIND, params=params)
+                r.raise_for_status()
+                j = r.json()
+        except Exception:
+            logger.exception("FinMind TaiwanStockInfo fetch failed")
+            return 0
+        if j.get("msg") != "success":
+            logger.warning("FinMind TaiwanStockInfo returned: %s", j.get("msg"))
+            return 0
+
+        market_map = {"twse": "TWSE", "tpex": "TPEx"}
+        seen: set[str] = set()
+        n = 0
+        for row in j.get("data", []):
+            sid = (row.get("stock_id") or "").strip()
+            name = (row.get("stock_name") or "").strip()
+            market = market_map.get((row.get("type") or "").lower())
+            # Ordinary equities/ETFs only: 4-6 digit numeric IDs, listed
+            # TWSE/TPEx, and skip index rows where the ID equals the name.
+            if not sid or not name or market is None:
+                continue
+            if not (4 <= len(sid) <= 6) or not sid[:4].isdigit():
+                continue
+            if sid == name or sid in seen:
+                continue
+            seen.add(sid)
+            db.add(Stock(
+                stock_id=sid,
+                name=name,
+                industry=(row.get("industry_category") or None),
+                market=market,
+            ))
+            n += 1
+
+        if n:
+            await db.commit()
+        logger.info("Stock master list seeded from FinMind: %d rows", n)
+        return n
