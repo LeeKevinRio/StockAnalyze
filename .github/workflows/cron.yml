@@ -43,9 +43,14 @@ jobs:
           # progress is kept and the retry finishes the remainder.
           for i in 1 2 3; do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 540 -X POST \
-              "$API/api/v1/analysis/screener/refresh?limit=5" || echo 000)
+              "$API/api/v1/analysis/screener/refresh?limit=5&llm_top=5" || echo 000)
             echo "attempt $i -> HTTP $code"
             if [ "$code" = "200" ]; then exit 0; fi
             sleep 30
           done
           echo "refresh did not complete after retries" && exit 1
+      - name: Evaluate price alerts against fresh closes
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 -X POST \
+            "$API/api/v1/alerts/check" || echo 000)
+          echo "alerts check -> HTTP $code"

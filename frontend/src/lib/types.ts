@@ -153,6 +153,80 @@ export interface MacroDashboard {
   updated_at: string | null;
 }
 
+export interface ReportSummary {
+  stock_id: string;
+  name: string;
+  report_date: string | null;
+  overall_score: number;
+  overall_signal: string;
+  confidence: number;
+  risk_level: string | null;
+  target_price: number | null;
+  ai_provider: string | null;
+  has_full_report: boolean;
+  short_term_outlook: string | null;
+}
+
+export interface ScoreHistoryPoint {
+  report_date: string | null;
+  overall_score: number;
+  overall_signal: string;
+  news: number;
+  fundamental: number;
+  technical: number;
+  institutional: number;
+  macro: number;
+}
+
+export interface PortfolioHolding {
+  stock_id: string;
+  name: string;
+  quantity: number;
+  avg_cost: number;
+  close: number | null;
+  cost_value: number;
+  market_value: number | null;
+  pnl: number | null;
+  pnl_percent: number | null;
+}
+
+export interface PriceAlertItem {
+  id: number;
+  stock_id: string;
+  name: string;
+  condition: 'above' | 'below';
+  target_price: number;
+  active: boolean;
+  close: number | null;
+  triggered_at: string | null;
+  triggered_price: number | null;
+  created_at: string | null;
+}
+
+export interface BacktestTrade {
+  date: string;
+  action: 'buy' | 'sell';
+  price: number;
+}
+
+export interface BacktestResult {
+  stock_id: string;
+  name: string;
+  strategy: string;
+  params: Record<string, number>;
+  days: number;
+  start_date: string;
+  end_date: string;
+  strategy_return_pct: number;
+  buy_hold_return_pct: number;
+  trade_count: number;
+  win_rate: number | null;
+  max_drawdown_pct: number;
+  in_position: boolean;
+  trades: BacktestTrade[];
+  curve: { date: string; strategy: number; buy_hold: number }[];
+}
+
 export interface AnalysisReport {
   stock_id: string;
   stock_name: string;

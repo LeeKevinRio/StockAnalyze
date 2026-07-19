@@ -1,5 +1,5 @@
 import useSWR from 'swr';
-import { analysisAPI, macroAPI, sentimentAPI, type ScreenerParams } from '@/lib/api';
+import { analysisAPI, macroAPI, reportsAPI, sentimentAPI, type ScreenerParams } from '@/lib/api';
 
 export function useAnalysisScores(stockId: string | null) {
   return useSWR(
@@ -40,4 +40,18 @@ export function useScreener(params: ScreenerParams) {
 
 export function useMacroDashboard() {
   return useSWR('/macro/dashboard', () => macroAPI.getDashboard(), { revalidateOnFocus: false });
+}
+
+export function useRecentReports(limit = 50) {
+  return useSWR(`/analysis/reports/recent/${limit}`, () => reportsAPI.getRecent(limit), {
+    revalidateOnFocus: false,
+  });
+}
+
+export function useScoreHistory(stockId: string | null, days = 90) {
+  return useSWR(
+    stockId ? `/analysis/${stockId}/history/${days}` : null,
+    () => reportsAPI.getHistory(stockId!, days),
+    { revalidateOnFocus: false },
+  );
 }

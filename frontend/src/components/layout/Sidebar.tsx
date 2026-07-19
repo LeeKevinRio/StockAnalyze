@@ -38,10 +38,10 @@ const NAV: NavItem[] = [
   { label: 'AI 選股', href: '/screener', icon: Sparkles, ready: true },
   { label: '市場新聞', href: '/news', icon: PieChart, ready: true },
   { label: '自選股', href: '/watchlist', icon: Star, ready: true },
-  { label: '策略回測', href: '#', icon: LineChart, ready: false },
-  { label: '投資組合', href: '#', icon: Briefcase, ready: false },
-  { label: '報告中心', href: '#', icon: FileText, ready: false },
-  { label: '通知中心', href: '#', icon: Bell, ready: false },
+  { label: '投資組合', href: '/portfolio', icon: Briefcase, ready: true },
+  { label: '策略回測', href: '/backtest', icon: LineChart, ready: true },
+  { label: '報告中心', href: '/reports', icon: FileText, ready: true },
+  { label: '通知中心', href: '/alerts', icon: Bell, ready: true },
   { label: '設定', href: '/settings', icon: Settings, ready: true },
 ];
 

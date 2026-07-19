@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import stocks, news, sentiment, analysis, health, technical, institutional, fundamental, macro, auth, watchlist
+from app.routers import stocks, news, sentiment, analysis, health, technical, institutional, fundamental, macro, auth, watchlist, portfolio, alerts, backtest
 
 # Make app.* INFO logs visible in production (uvicorn only configures its own
 # loggers; without this the root logger stays at WARNING and swallows them).
@@ -78,3 +78,6 @@ app.include_router(fundamental.router, prefix="/api/v1/fundamental", tags=["Fund
 app.include_router(macro.router, prefix="/api/v1/macro", tags=["Macro"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(watchlist.router, prefix="/api/v1/watchlist", tags=["Watchlist"])
+app.include_router(portfolio.router, prefix="/api/v1/portfolio", tags=["Portfolio"])
+app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["Alerts"])
+app.include_router(backtest.router, prefix="/api/v1/backtest", tags=["Backtest"])

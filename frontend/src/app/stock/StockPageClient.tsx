@@ -64,7 +64,7 @@ import {
 } from '@/hooks/useInstitutional';
 import { useFundamentalData, useFinancialStatements } from '@/hooks/useFundamental';
 import { useWatchlist } from '@/hooks/useWatchlist';
-import { analysisAPI } from '@/lib/api';
+import { alertsAPI, analysisAPI } from '@/lib/api';
 import type { DimensionScore } from '@/lib/types';
 
 const DIMENSION_ICONS: Record<string, React.ElementType> = {
@@ -154,11 +154,36 @@ export default function StockPageClient({ stockId }: StockPageClientProps) {
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
 
-  // Transient toast for header actions (copy link, alerts placeholder)
+  // Transient toast for header actions (copy link, alert saved)
   const [notice, setNotice] = useState<string | null>(null);
   function flash(msg: string) {
     setNotice(msg);
     setTimeout(() => setNotice((cur) => (cur === msg ? null : cur)), 2000);
+  }
+
+  // Price alert popover
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [alertCond, setAlertCond] = useState<'above' | 'below'>('above');
+  const [alertPrice, setAlertPrice] = useState('');
+  const [alertBusy, setAlertBusy] = useState(false);
+
+  async function saveAlert() {
+    const price = parseFloat(alertPrice);
+    if (!price || price <= 0) {
+      flash('請輸入有效的目標價');
+      return;
+    }
+    setAlertBusy(true);
+    try {
+      await alertsAPI.create(stockId, alertCond, price);
+      setAlertOpen(false);
+      setAlertPrice('');
+      flash('提醒已設定,收盤後自動檢查');
+    } catch {
+      flash('設定失敗,請稍後再試');
+    } finally {
+      setAlertBusy(false);
+    }
   }
 
   async function handleGenerate() {
@@ -272,13 +297,62 @@ export default function StockPageClient({ stockId }: StockPageClientProps) {
             {/* Right: action buttons + overall signal badge */}
             <div className="flex flex-col items-start gap-2 lg:items-end">
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => flash('提醒功能即將推出')}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-sm text-slate-300 transition-colors hover:bg-slate-800"
-                  title="設定提醒（即將推出）"
-                >
-                  <Bell className="h-4 w-4" /> 設定提醒
-                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      if (!loggedIn) { router.push('/login'); return; }
+                      setAlertOpen((v) => !v);
+                      if (closeNum != null && !alertPrice) setAlertPrice(String(closeNum));
+                    }}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors ${alertOpen ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:bg-slate-800'}`}
+                    title={loggedIn ? '設定價格提醒' : '登入後設定提醒'}
+                  >
+                    <Bell className="h-4 w-4" /> 設定提醒
+                  </button>
+                  {alertOpen && (
+                    <div className="absolute right-0 top-full z-30 mt-2 w-64 rounded-xl border border-slate-700 bg-slate-800 p-3 shadow-2xl">
+                      <div className="mb-2 flex gap-1.5">
+                        <button
+                          onClick={() => setAlertCond('above')}
+                          className={`flex-1 rounded-md px-2 py-1 text-xs transition-colors ${alertCond === 'above' ? 'bg-red-500/20 text-red-300 ring-1 ring-red-500/40' : 'bg-slate-700 text-slate-400'}`}
+                        >
+                          漲到(≥)
+                        </button>
+                        <button
+                          onClick={() => setAlertCond('below')}
+                          className={`flex-1 rounded-md px-2 py-1 text-xs transition-colors ${alertCond === 'below' ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40' : 'bg-slate-700 text-slate-400'}`}
+                        >
+                          跌到(≤)
+                        </button>
+                      </div>
+                      <input
+                        value={alertPrice}
+                        onChange={(e) => setAlertPrice(e.target.value.replace(/[^0-9.]/g, ''))}
+                        placeholder="目標價"
+                        inputMode="decimal"
+                        className="mb-2 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={saveAlert}
+                          disabled={alertBusy}
+                          className="flex-1 rounded-md bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-60"
+                        >
+                          {alertBusy ? '儲存中…' : '建立提醒'}
+                        </button>
+                        <button
+                          onClick={() => setAlertOpen(false)}
+                          className="rounded-md px-3 py-1.5 text-xs text-slate-400 hover:text-white"
+                        >
+                          取消
+                        </button>
+                      </div>
+                      <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
+                        每日收盤資料更新後檢查,達標會顯示在通知中心。
+                      </p>
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={() => { if (loggedIn) toggleWatchlist(stockId); else router.push('/login'); }}
                   className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors ${inWatchlist(stockId) ? 'border-amber-500/40 bg-amber-500/10 text-amber-400' : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:bg-slate-800'}`}

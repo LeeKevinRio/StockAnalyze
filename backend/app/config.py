@@ -15,10 +15,9 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/stock_analyze"
 
-    # LLM API Keys
+    # LLM API Keys (fallback chain: Gemini -> Groq)
     GEMINI_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
-    OPENAI_API_KEY: Optional[str] = None
 
     # Data Sources
     FINMIND_TOKEN: Optional[str] = None

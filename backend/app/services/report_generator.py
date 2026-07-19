@@ -114,14 +114,24 @@ class ReportGenerator:
             providers = llm_service.available_providers
             output.provider = providers[0] if providers else "unknown"
 
+            # Prefer the machine-readable JSON block the prompt requests;
+            # fall back to regex extraction over the free-form Chinese text.
+            meta = self._parse_json_block(report_text)
+            if meta:
+                report_text = self._strip_json_block(report_text)
+
             output.markdown = report_text
 
-            # Extract structured data from the report
-            output.target_price = self._extract_target_price(report_text)
-            output.stop_loss_price = self._extract_stop_loss(report_text)
-            output.risk_level = self._extract_risk_level(report_text)
+            output.target_price = self._num(meta.get("target_price")) or self._extract_target_price(report_text)
+            output.stop_loss_price = self._num(meta.get("stop_loss_price")) or self._extract_stop_loss(report_text)
+            risk = str(meta.get("risk_level") or "").upper()
+            output.risk_level = risk if risk in ("HIGH", "MEDIUM", "LOW") else self._extract_risk_level(report_text)
 
             outlooks = self._extract_outlooks(report_text)
+            for key, meta_key in (("short", "short_term_outlook"), ("medium", "medium_term_outlook"), ("long", "long_term_outlook")):
+                text = str(meta.get(meta_key) or "").strip()
+                if len(text) >= 20:
+                    outlooks[key] = text
             # The LLM is sometimes terse ("上漲"); fall back to a data-derived
             # sentence so the user never sees a near-empty outlook.
             output.short_term_outlook = self._ensure_outlook(
@@ -431,12 +441,51 @@ class ReportGenerator:
 3. 建議進場區間、停損和目標價位請基於現有數據合理推估，務必給出具體數字
 4. 三段展望每段至少 60 字，必須點出價位、時間點與操作動作，嚴禁只寫「上升」「看好」「謹慎」等空泛詞
 5. 每段展望各自寫成單獨一行，不要在段落中間換行，方便系統擷取
+
+最後，在報告結尾附上一個 machine-readable 區塊（純 JSON，包在 ```json 圍欄內），格式如下，數值必須與報告內文一致：
+```json
+{{"target_price": 數字, "stop_loss_price": 數字, "risk_level": "HIGH|MEDIUM|LOW", "short_term_outlook": "短期展望整段文字", "medium_term_outlook": "中期展望整段文字", "long_term_outlook": "長期展望整段文字"}}
+```
 """
         return prompt
 
     # ------------------------------------------------------------------
     # Extraction methods
     # ------------------------------------------------------------------
+
+    _JSON_BLOCK_RE = r"```json\s*(\{.*?\})\s*```"
+
+    def _parse_json_block(self, report_text: str) -> dict:
+        """Parse the trailing machine-readable ```json block, if present.
+
+        Returns {} when absent or malformed — callers fall back to regex.
+        """
+        import json
+        import re as _re
+
+        matches = _re.findall(self._JSON_BLOCK_RE, report_text, _re.DOTALL)
+        if not matches:
+            return {}
+        try:
+            data = json.loads(matches[-1])
+            return data if isinstance(data, dict) else {}
+        except (json.JSONDecodeError, ValueError):
+            return {}
+
+    def _strip_json_block(self, report_text: str) -> str:
+        """Remove the machine-readable JSON fence from the user-facing markdown."""
+        import re as _re
+
+        return _re.sub(self._JSON_BLOCK_RE, "", report_text, flags=_re.DOTALL).rstrip()
+
+    @staticmethod
+    def _num(v) -> Optional[float]:
+        """Coerce a JSON value to a positive float, else None."""
+        try:
+            f = float(v)
+            return f if f > 0 else None
+        except (TypeError, ValueError):
+            return None
 
     def _extract_target_price(self, report_text: str) -> Optional[float]:
         """Extract target price from the report text using regex.

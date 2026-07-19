@@ -13,6 +13,11 @@ import type {
   AnalysisReport,
   ScreenerPick,
   MacroDashboard,
+  ReportSummary,
+  ScoreHistoryPoint,
+  PortfolioHolding,
+  PriceAlertItem,
+  BacktestResult,
 } from './types';
 
 export interface ScreenerParams {
@@ -129,4 +134,40 @@ export const macroAPI = {
 // Health
 export const healthAPI = {
   check: () => fetchAPI<{ status: string; service: string }>(`/health`),
+};
+
+// Report center APIs
+export const reportsAPI = {
+  getRecent: (limit = 50) => fetchAPI<ReportSummary[]>(`/api/v1/analysis/reports/recent?limit=${limit}`),
+  getHistory: (id: string, days = 90) => fetchAPI<ScoreHistoryPoint[]>(`/api/v1/analysis/${id}/history?days=${days}`),
+};
+
+// Portfolio APIs (require auth)
+export const portfolioAPI = {
+  get: () => fetchAPI<PortfolioHolding[]>(`/api/v1/portfolio`),
+  upsert: (id: string, quantity: number, avgCost: number) =>
+    fetchAPI<{ ok: boolean }>(`/api/v1/portfolio/${id}`, {
+      method: 'POST',
+      body: JSON.stringify({ quantity, avg_cost: avgCost }),
+    }),
+  remove: (id: string) => fetchAPI<{ ok: boolean }>(`/api/v1/portfolio/${id}`, { method: 'DELETE' }),
+};
+
+// Backtest API
+export const backtestAPI = {
+  run: (id: string, strategy: 'ma_cross' | 'rsi', days: number, fast = 5, slow = 20) =>
+    fetchAPI<BacktestResult>(
+      `/api/v1/backtest/${id}?strategy=${strategy}&days=${days}&fast=${fast}&slow=${slow}`,
+    ),
+};
+
+// Price alert APIs (require auth, except check)
+export const alertsAPI = {
+  get: () => fetchAPI<PriceAlertItem[]>(`/api/v1/alerts`),
+  create: (stockId: string, condition: 'above' | 'below', targetPrice: number) =>
+    fetchAPI<{ ok: boolean }>(`/api/v1/alerts`, {
+      method: 'POST',
+      body: JSON.stringify({ stock_id: stockId, condition, target_price: targetPrice }),
+    }),
+  remove: (id: number) => fetchAPI<{ ok: boolean }>(`/api/v1/alerts/${id}`, { method: 'DELETE' }),
 };

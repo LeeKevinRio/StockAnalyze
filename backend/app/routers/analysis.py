@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -145,6 +145,35 @@ async def screen_stocks(
     return _rank(picks, signal, sort, limit)
 
 
+async def _refresh_news_if_stale(stock_id: str, db: AsyncSession) -> None:
+    """Top up a stock's news when the last fetch is older than 6 h.
+
+    Keeps 消息面 alive for the daily scan: without this, news only arrived
+    when someone happened to open the stock page.
+    """
+    from sqlalchemy import func as safunc
+
+    from app.models.news import StockNews
+    from app.services.news_service import fetch_and_store_news
+
+    last = (
+        await db.execute(
+            select(safunc.max(StockNews.fetched_at)).where(StockNews.stock_id == stock_id)
+        )
+    ).scalar_one_or_none()
+    if last is not None and (datetime.now(timezone.utc) - last) < timedelta(hours=6):
+        return
+    stock = (
+        await db.execute(select(Stock).where(Stock.stock_id == stock_id))
+    ).scalar_one_or_none()
+    if stock is None:
+        return
+    try:
+        await fetch_and_store_news(stock_id, stock.name, db)
+    except Exception:
+        logger.warning("News refresh failed for %s", stock_id, exc_info=True)
+
+
 async def _compute_pick(stock_id: str, db: AsyncSession) -> dict | None:
     """Ensure data, run the (non-LLM) engine, persist scores, return a row."""
     from app.services.analysis_engine import analysis_engine
@@ -172,6 +201,7 @@ async def _compute_pick(stock_id: str, db: AsyncSession) -> dict | None:
         await ensure_price_history(stock_id, db)
         await ensure_fundamentals(stock_id, db)
         await ensure_institutional(stock_id, db)
+        await _refresh_news_if_stale(stock_id, db)
         result = await analysis_engine.analyze(stock_id, db)
     except Exception:
         logger.exception("Screener compute failed for %s", stock_id)
@@ -211,9 +241,15 @@ async def refresh_screener(
     limit: int = Query(20, ge=1, le=50),
     signal: str | None = Query(None),
     sort: str = Query("overall"),
+    llm_top: int = Query(0, ge=0, le=10, description="Generate full LLM reports for the top N stocks"),
     db: AsyncSession = Depends(get_db),
 ):
     """Scan the curated universe: backfill data, score each stock, persist.
+
+    Also tops up per-stock news (staleness-gated) and market-wide social
+    sentiment so 消息面 has signal. With ``llm_top`` > 0, generates full LLM
+    reports for the N highest-scoring stocks (skipping any that already got
+    a real LLM report today — protects the free-tier quota).
 
     Slower than GET (does on-demand fetches), but only the first run per stock
     is heavy — afterwards the data is cached. Returns the freshly ranked list.
@@ -224,7 +260,144 @@ async def refresh_screener(
         await _compute_pick(sid, db)
         await db.commit()
 
+    # Market-wide social sentiment (PTT) — one scrape, deduped by URL.
+    try:
+        from app.services.sentiment_service import fetch_and_analyze_social
+
+        await fetch_and_analyze_social(db)
+        await db.commit()
+    except Exception:
+        logger.warning("Social sentiment fetch failed", exc_info=True)
+        await db.rollback()
+
+    if llm_top:
+        await _generate_llm_reports_for_top(llm_top, db)
+
     return await screen_stocks(limit=limit, signal=signal, sort=sort, db=db)
+
+
+# Providers that mean "no real LLM report yet" — worth upgrading.
+_NON_LLM_PROVIDERS = (None, "", "screener", "fallback", "unknown")
+
+
+async def _generate_llm_reports_for_top(n: int, db: AsyncSession) -> None:
+    """Generate full LLM reports for today's top-N stocks by overall score."""
+    from app.services.analysis_engine import analysis_engine
+    from app.services.report_generator import report_generator
+
+    reports = (
+        await db.execute(
+            select(AnalysisReport)
+            .where(AnalysisReport.report_date == date.today())
+            .order_by(AnalysisReport.overall_score.desc())
+            .limit(n)
+        )
+    ).scalars().all()
+
+    for rep in reports:
+        if rep.ai_provider not in _NON_LLM_PROVIDERS:
+            continue  # already has a real LLM report today
+        stock = (
+            await db.execute(select(Stock).where(Stock.stock_id == rep.stock_id))
+        ).scalar_one_or_none()
+        name = stock.name if stock else rep.stock_id
+        try:
+            result = await analysis_engine.analyze(rep.stock_id, db)
+            out = await report_generator.generate_report(rep.stock_id, name, result, db)
+            if out.provider == "fallback":
+                # LLM quota exhausted — keep the screener report; the next
+                # scheduled run will try again after quotas reset.
+                logger.info("LLM unavailable for %s; keeping screener report", rep.stock_id)
+                continue
+            await analysis_engine.save_report(
+                stock_id=rep.stock_id,
+                result=result,
+                ai_report=out.markdown,
+                ai_provider=out.provider,
+                db=db,
+                risk_level=out.risk_level,
+                target_price=out.target_price,
+                stop_loss_price=out.stop_loss_price,
+                short_term_outlook=out.short_term_outlook,
+                medium_term_outlook=out.medium_term_outlook,
+                long_term_outlook=out.long_term_outlook,
+            )
+            await db.commit()
+            logger.info("LLM report generated for %s via %s", rep.stock_id, out.provider)
+        except Exception:
+            logger.exception("LLM report failed for %s", rep.stock_id)
+            await db.rollback()
+
+
+@router.get("/reports/recent")
+async def get_recent_reports(
+    limit: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """報告中心 — the latest report per stock, newest first."""
+    reports = (
+        await db.execute(
+            select(AnalysisReport).order_by(
+                AnalysisReport.stock_id, AnalysisReport.report_date.desc()
+            )
+        )
+    ).scalars().all()
+
+    seen: set[str] = set()
+    out = []
+    for r in reports:
+        if r.stock_id in seen:
+            continue
+        seen.add(r.stock_id)
+        stock = (
+            await db.execute(select(Stock).where(Stock.stock_id == r.stock_id))
+        ).scalar_one_or_none()
+        out.append({
+            "stock_id": r.stock_id,
+            "name": stock.name if stock else r.stock_id,
+            "report_date": r.report_date.isoformat() if r.report_date else None,
+            "overall_score": float(r.overall_score or 0),
+            "overall_signal": r.overall_signal or "neutral",
+            "confidence": float(r.confidence or 0),
+            "risk_level": r.risk_level,
+            "target_price": float(r.target_price) if r.target_price is not None else None,
+            "ai_provider": r.ai_provider,
+            "has_full_report": r.ai_provider not in _NON_LLM_PROVIDERS,
+            "short_term_outlook": r.short_term_outlook,
+        })
+    out.sort(key=lambda x: (x["report_date"] or "", x["overall_score"]), reverse=True)
+    return out[:limit]
+
+
+@router.get("/{stock_id}/history")
+async def get_score_history(
+    stock_id: str,
+    days: int = Query(90, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+):
+    """Score history for one stock — feeds the 報告中心 trend chart."""
+    reports = (
+        await db.execute(
+            select(AnalysisReport)
+            .where(AnalysisReport.stock_id == stock_id)
+            .order_by(AnalysisReport.report_date.desc())
+            .limit(days)
+        )
+    ).scalars().all()
+
+    return [
+        {
+            "report_date": r.report_date.isoformat() if r.report_date else None,
+            "overall_score": float(r.overall_score or 0),
+            "overall_signal": r.overall_signal or "neutral",
+            "news": float(r.news_score or 0),
+            "fundamental": float(r.fundamental_score or 0),
+            "technical": float(r.technical_score or 0),
+            "institutional": float(r.institutional_score or 0),
+            "macro": float(r.macro_score or 0),
+        }
+        for r in reversed(reports)  # ascending for charting
+    ]
 
 
 @router.get("/{stock_id}/scores", response_model=AnalysisScoresResponse)

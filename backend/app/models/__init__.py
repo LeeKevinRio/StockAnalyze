@@ -7,11 +7,13 @@ from app.models.fundamental import StockFundamental, FinancialStatement, StockDi
 from app.models.institutional import InstitutionalTrading, MarginTrading
 from app.models.analysis import AnalysisReport
 from app.models.system import LLMUsageLog, DataFetchLog
-from app.models.user import User, WatchlistItem
+from app.models.user import PortfolioItem, PriceAlert, User, WatchlistItem
 
 __all__ = [
     "User",
     "WatchlistItem",
+    "PortfolioItem",
+    "PriceAlert",
     "Stock",
     "StockPrice",
     "StockNews",
