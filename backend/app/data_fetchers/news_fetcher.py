@@ -206,10 +206,11 @@ class NewsFetcher(BaseFetcher):
 
         query = stock_name if stock_name else stock_id
 
+        # Yahoo TW RSS was removed — the endpoint now 404s unconditionally,
+        # so it only added latency and error noise.
         results = await asyncio.gather(
             self.fetch_google_news(query),
             self.fetch_cnyes_news(stock_id),
-            self.fetch_yahoo_news(stock_id),
             return_exceptions=True,
         )
 

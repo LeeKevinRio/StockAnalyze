@@ -255,10 +255,19 @@ async def refresh_screener(
     is heavy — afterwards the data is cached. Returns the freshly ranked list.
     """
     # Sequential to stay gentle on FinMind's free tier and the DB session.
-    # Commit per stock so a mid-request timeout keeps the progress so far.
+    # Commit per stock so a mid-request timeout keeps the progress so far;
+    # any single stock failing must not 500 the whole scan (free-tier DB
+    # connections can drop mid-request), so each iteration is defensive.
     for sid in SCREENER_UNIVERSE:
-        await _compute_pick(sid, db)
-        await db.commit()
+        try:
+            await _compute_pick(sid, db)
+            await db.commit()
+        except Exception:
+            logger.exception("Screener iteration failed for %s", sid)
+            try:
+                await db.rollback()
+            except Exception:
+                logger.exception("Rollback failed for %s", sid)
 
     # Market-wide social sentiment (PTT) — one scrape, deduped by URL.
     try:
@@ -268,10 +277,20 @@ async def refresh_screener(
         await db.commit()
     except Exception:
         logger.warning("Social sentiment fetch failed", exc_info=True)
-        await db.rollback()
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
     if llm_top:
-        await _generate_llm_reports_for_top(llm_top, db)
+        try:
+            await _generate_llm_reports_for_top(llm_top, db)
+        except Exception:
+            logger.exception("LLM top-N generation failed")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
 
     return await screen_stocks(limit=limit, signal=signal, sort=sort, db=db)
 

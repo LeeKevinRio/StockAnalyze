@@ -12,16 +12,20 @@ from app.config import settings
 
 # Managed Postgres (Render/Neon/Supabase) requires SSL; local/internal does not.
 _connect_args = {}
-if settings.database_ssl_required:
-    _connect_args["ssl"] = "require"
+_pool_kwargs = {}
+if settings.async_database_url.startswith("sqlite"):
+    # SQLite (tests / local dev) uses NullPool — pool sizing args are invalid.
+    pass
+else:
+    if settings.database_ssl_required:
+        _connect_args["ssl"] = "require"
+    _pool_kwargs = {"pool_size": 20, "max_overflow": 10, "pool_pre_ping": True}
 
 engine = create_async_engine(
     settings.async_database_url,
     echo=settings.is_development,
-    pool_size=20,
-    max_overflow=10,
-    pool_pre_ping=True,
     connect_args=_connect_args,
+    **_pool_kwargs,
 )
 
 async_session_factory = async_sessionmaker(
